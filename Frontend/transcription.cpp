@@ -275,7 +275,7 @@ bool Transcription::fromJson (
         if (!ok1 || !ok2 || startSec >= endSec)
         {
             qWarning () << "Eintrag übersprungen: ungültiger Zeitbereich [" << start << " – " << end
-                       << "]";
+                        << "]";
             continue;
         }
 
@@ -457,6 +457,21 @@ void Transcription::setDateTime (
 
 //--------------------------------------------------------------------------------------------------
 
+void Transcription::setViewMode (
+    TranscriptionViewMode mode)
+{
+    m_viewMode = mode;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+TranscriptionViewMode Transcription::getViewMode () const
+{
+    return m_viewMode;
+}
+
+//--------------------------------------------------------------------------------------------------
+
 QColor Transcription::speakerColor (
     const QString &speaker) const
 {
@@ -467,41 +482,6 @@ QColor Transcription::speakerColor (
     int g = (h & 0x00FF00) >> 8;
     int b = h & 0x0000FF;
     return QColor (r, g, b);
-}
-
-//--------------------------------------------------------------------------------------------------
-void Transcription::setViewMode(TranscriptionViewMode mode) {
-    viewMode = mode;
-}
-
-//--------------------------------------------------------------------------------------------------
-TranscriptionViewMode Transcription::getViewMode() const {
-    return viewMode;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-bool Transcription::isContentEqual(const Transcription* other) const
-{
-    if (!other)
-        return false;
-
-    const QList<MetaText>& list1 = this->getMetaTexts();
-    const QList<MetaText>& list2 = other->getMetaTexts();
-
-    if (list1.size() != list2.size())
-        return false;
-
-    for (int i = 0; i < list1.size(); ++i)
-    {
-        const MetaText& a = list1.at(i);
-        const MetaText& b = list2.at(i);
-
-        if (a.Speaker != b.Speaker || a.Text != b.Text)
-            return false;
-    }
-
-    return true;
 }
 
 //--------------------------------------------------------------------------------------------------

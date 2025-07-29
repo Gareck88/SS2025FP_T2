@@ -15,7 +15,6 @@ class QLabel;
 class QDoubleSpinBox;
 class QSpinBox;
 class QFontComboBox;
-class QScrollArea;
 
 /**
  * @brief Ein Dialogfenster zur Bearbeitung der Anwendungseinstellungen.
@@ -88,15 +87,10 @@ private:
 
     // Datenbank-Einstellungen
     QLineEdit *dbHostEdit; ///< Eingabefeld für den Hostname.
-    QSpinBox  *dbPortSpin; ///< Eingabefeld für den Port.
+    QSpinBox *dbPortSpin;  ///< Eingabefeld für den Port.
     QLineEdit *dbNameEdit; ///< Eingabefeld für den Datenbankname.
     QLineEdit *dbUserEdit; ///< Eingabefeld für den Benutzername.
     QLineEdit *dbPassEdit; ///< Eingabefeld für den Password.
-
-    // Layout
-    QScrollArea *scroll;
-    QWidget content;
-
 };
 
 #endif // SETTINGSWIZARD_H

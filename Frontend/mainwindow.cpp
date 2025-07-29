@@ -1,7 +1,6 @@
 #include "mainwindow.h"
 
 #include <QAction>
-#include <QApplication>
 #include <QBoxLayout>
 #include <QCloseEvent>
 #include <QDesktopServices>
@@ -13,7 +12,6 @@
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QPalette>
 #include <QProcess>
 #include <QPushButton>
 #include <QSplitter>
@@ -26,7 +24,6 @@
 #include "audiofactory.h"
 #include "capturethread.h"
 #include "databasemanager.h"
-#include "multisearchdialog.h"
 #include "pythonenvironmentmanager.h"
 #include "searchdialog.h"
 #include "settingswizard.h"
@@ -35,10 +32,14 @@
 #include "texteditordialog.h"
 #include "transcriptpdfexporter.h"
 #include "wavwriterthread.h"
+/** @author Pakize Gökkaya      Für Mac*/
+#include "filemanager.h"
+
 
 //--------------------------------------------------------------------------------------------------
 
-MainWindow::MainWindow (QWidget *parent)
+MainWindow::MainWindow (
+    QWidget *parent)
     : QMainWindow (parent)
     , splitter (new QSplitter (this))
     , leftPanel (new QWidget (this))
@@ -54,9 +55,8 @@ MainWindow::MainWindow (QWidget *parent)
     , assignNamesButton (new QPushButton (tr ("Sprecher zuordnen"), this))
     , editTextButton (new QPushButton (tr ("Text bearbeiten"), this))
     , generateTagsButton (new QPushButton (tr ("Tags generieren"), this))
-    , searchButton (new QPushButton (tr ("Suche im Transkript"), this))
+    , searchButton (new QPushButton (tr ("Suchen"), this))
     , toggleButton (new QPushButton (tr ("Transkript umschalten"), this))
-    , multiSearchButton (new QPushButton (tr ("Suche in allen Transkripten"), this))
     , transcriptView (new QTextEdit (this))
     , pollTimer (new QTimer (this))
     , statusTimer (new QTimer (this))
@@ -72,7 +72,6 @@ MainWindow::MainWindow (QWidget *parent)
     , m_textEditorDialog (nullptr)
     , m_databaseManager (new DatabaseManager (this))
     , m_searchDialog (new SearchDialog (this))
-    , m_multiSearchDialog (new MultiSearchDialog (this))
 {
     //  Konfiguriert den Timer, der Statusnachrichten nach 3 Sekunden automatisch ausblendet.
     statusTimer->setSingleShot (true);
@@ -80,27 +79,7 @@ MainWindow::MainWindow (QWidget *parent)
 
     //  Initialisiert die Benutzeroberfläche und lädt gespeicherte Meetings.
     setupUI ();
-
-    // Datenbank-Verbindung versuchen
-    if (!m_databaseManager->connectToSupabase ())
-    {
-        // Warnung anzeigen, aber App läuft weiter
-        QMessageBox::warning (
-            this,
-            "Datenbankfehler",
-            "Konnte keine Verbindung zur Supabase-Datenbank herstellen.\n"
-            "Bitte überprüfen Sie die Einstellungen unter 'Einstellungen'.\n"
-            "Einige Funktionen sind deaktiviert, bis die Verbindung hergestellt ist.");
-    }
-    // Nur laden, wenn DB-Verbindung erfolgreich war
-    if (m_databaseManager->isConnected ())
-    {
-        loadMeetings ();
-    }
-    else
-    {
-        qDebug () << "Meetings werden nicht geladen, da keine DB-Verbindung besteht.";
-    }
+    loadMeetings ();
 
     //  Alle Signal-Slot-Verbindungen werden in einer separaten Methode gekapselt,
     //  um den Konstruktor übersichtlich zu halten.
@@ -122,9 +101,6 @@ MainWindow::MainWindow (QWidget *parent)
 
     //  Setzt den finalen, sauberen Anfangszustand der UI.
     updateUiForCurrentMeeting ();
-
-    QSettings settings ("SS2025FP_T2", "AudioTranskriptor");
-    restoreGeometry (settings.value ("geometry").toByteArray ());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -154,48 +130,15 @@ MainWindow::~MainWindow ()
 void MainWindow::closeEvent (
     QCloseEvent *event)
 {
-    QSettings settings ("SS2025FP_T2", "AudioTranskriptor");
-    settings.setValue ("geometry", saveGeometry ());
-
-    // Wenn kein Transkript geladen ist, einfach schließen
-    if (m_script->name ().isEmpty ())
-    {
-        event->accept ();
-        return;
-    }
-    // Hole das Original-Transkript aus der Map
-    Transcription *original = m_transcriptions.value (m_script->name (), nullptr);
-
-    // Wenn das Original nicht existiert oder keine Änderungen vorliegen, einfach schließen
-    if (!original || m_script->isContentEqual (original))
+    //  Wenn kein Meeting aktiv ist, gibt es nichts zu speichern.
+    if (m_currentMeetingName.isEmpty () || m_currentMeetingDateTime.isEmpty ())
     {
         event->accept ();
         return;
     }
 
-    // Zeige Dialog zur Bestätigung des Speicherns
-    QMessageBox::StandardButton reply
-        = QMessageBox::question (this,
-                                 tr ("Änderungen speichern"),
-                                 tr ("Sie haben Änderungen vorgenommen. Möchten Sie speichern?"),
-                                 QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+    //  ToDo:   Fragen ob Meeting (egal wo) gespeichert werden soll, falls bearbeitet oder noch nicht gespeichert
 
-    switch (reply)
-    {
-    case QMessageBox::Yes:
-        updateTranscriptionInDatabase ();
-        event->accept ();
-        break;
-    case QMessageBox::No:
-        event->accept ();
-        break;
-    case QMessageBox::Cancel:
-    default:
-        event->ignore ();
-        break;
-    }
-
-    //  Sollte nie erreicht werden
     //  Akzeptiere das Schließen-Event, damit das Fenster geschlossen wird.
     event->accept ();
 }
@@ -224,7 +167,7 @@ void MainWindow::setupUI ()
     buttonLayout->addWidget (assignNamesButton);
     buttonLayout->addWidget (editTextButton);
     buttonLayout->addWidget (generateTagsButton);
-    buttonLayout->addWidget (multiSearchButton);
+    buttonLayout->addWidget (searchButton);
 
     QHBoxLayout *labelLayout = new QHBoxLayout ();
     statusLabel = new QLabel (this);
@@ -238,19 +181,16 @@ void MainWindow::setupUI ()
     nameLabel->setFont (f);
     timeLabel->setFont (f);
     transkriptStatusLabel->setFont (f);
-    nameLabel->setAlignment (Qt::AlignRight | Qt::AlignVCenter);
-    timeLabel->setAlignment (Qt::AlignRight | Qt::AlignVCenter);
-    transkriptStatusLabel->setAlignment (Qt::AlignRight | Qt::AlignVCenter);
+    nameLabel->setAlignment (Qt::AlignRight);
+    timeLabel->setAlignment (Qt::AlignRight);
+    transkriptStatusLabel->setAlignment (Qt::AlignRight);
 
-    labelLayout->setContentsMargins (0, 0, 0, 0);
-    labelLayout->setSpacing (8);
-    labelLayout->addWidget (statusLabel, 0, Qt::AlignVCenter);
+    labelLayout->addWidget (statusLabel);
     labelLayout->addStretch ();
-    labelLayout->addWidget (nameLabel, 0, Qt::AlignVCenter);
-    labelLayout->addWidget (timeLabel, 0, Qt::AlignVCenter);
-    labelLayout->addWidget (transkriptStatusLabel, 0, Qt::AlignVCenter);
-    labelLayout->addWidget (toggleButton, 0, Qt::AlignVCenter);
-    labelLayout->addWidget (searchButton, 0, Qt::AlignVCenter);
+    labelLayout->addWidget (nameLabel);
+    labelLayout->addWidget (timeLabel);
+    labelLayout->addWidget (transkriptStatusLabel);
+    labelLayout->addWidget (toggleButton);
 
     QVBoxLayout *mainLayout = new QVBoxLayout ();
     mainLayout->addLayout (buttonLayout);
@@ -277,8 +217,8 @@ void MainWindow::setupUI ()
     menuBar->addMenu (menuExtras);
 
     //  Datei-Menüeinträge erstellen und den Member-Variablen zuweisen
-    m_actionOpen = new QAction (tr ("Transkript aus Json laden..."), this);
-    //m_actionSave = new QAction (tr ("Transkript speichern"), this);
+    m_actionOpen = new QAction (tr ("Transkript laden..."), this);
+    m_actionSave = new QAction (tr ("Transkript speichern"), this);
     m_actionSaveAs = new QAction (tr ("Transkript speichern unter..."), this);
     m_actionSaveToDB = new QAction (tr ("Transkript in Datenbank speichern"), this);
     m_actionRestoreOriginal = new QAction (tr ("Original wiederherstellen"), this);
@@ -289,13 +229,13 @@ void MainWindow::setupUI ()
     //  Standard-Tastenkürzel für die Aktionen festlegen
     m_actionOpen->setShortcut (QKeySequence::Open);
     m_actionSaveToDB->setShortcut (QKeySequence::Save);
-    //m_actionSave->setShortcut (QKeySequence::Save);
+    m_actionSave->setShortcut (QKeySequence::Save);
     m_actionSaveAs->setShortcut (QKeySequence::SaveAs);
     m_actionClose->setShortcut (QKeySequence::Quit);
 
     //  Aktionen dem "Datei"-Menü hinzufügen
     menuDatei->addAction (m_actionOpen);
-    //menuDatei->addAction (m_actionSave);
+    menuDatei->addAction (m_actionSave);
     menuDatei->addAction (m_actionSaveAs);
     menuDatei->addSeparator ();
     menuDatei->addAction (m_actionSaveToDB);
@@ -324,7 +264,6 @@ void MainWindow::setupUI ()
 
     //  Die Aktionen der Menüeinträge mit den entsprechenden Slots verbinden.
     //  Diese Verbindungen werden in der doConnects()-Methode gebündelt.
-    transcriptView->setObjectName ("transcriptView");
 
     setCentralWidget (splitter);
 }
@@ -345,12 +284,11 @@ void MainWindow::doConnects ()
     connect (meetingList, &QListWidget::itemDoubleClicked, this, &MainWindow::onMeetingSelected);
     connect (searchBox, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
     connect (searchButton, &QPushButton::clicked, this, &MainWindow::onSearchButtonClicked);
-    connect (multiSearchButton, &QPushButton::clicked, this, &MainWindow::openMultiSearchDialog);
     connect (toggleButton, &QPushButton::clicked, this, &MainWindow::toggleTranscriptionVersion);
 
     //  Menü "Datei"
     connect (m_actionOpen, &QAction::triggered, this, &MainWindow::loadTranscriptionFromJson);
-    //connect (m_actionSave, &QAction::triggered, this, &MainWindow::saveTranscriptionToJson);
+    connect (m_actionSave, &QAction::triggered, this, &MainWindow::saveTranscriptionToJson);
     connect (m_actionSaveAs, &QAction::triggered, this, &MainWindow::saveTranscriptionToJsonAs);
     connect (m_actionSaveToDB,
              &QAction::triggered,
@@ -498,15 +436,15 @@ void MainWindow::loadMeetings ()
     }
 
     //  Beauftragt den FileManager, alle existierenden Meeting-Dateien zu finden.
-    m_transcriptions = m_databaseManager->loadAllTranscriptions ();
+    QStringList allData = m_databaseManager->loadAllTranscriptions ();
 
-    if (m_transcriptions.isEmpty ())
+    if (allData.isEmpty ())
     {
         meetingList->addItem ("⚠️ Keine Besprechungen gefunden");
         return;
     }
     //  Fügt die gefundenen Meeting-IDs der Liste in der UI hinzu.
-    meetingList->addItems (m_transcriptions.keys ());
+    meetingList->addItems (allData);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -530,8 +468,6 @@ void MainWindow::updateUiForCurrentMeeting ()
     if (meetingLoaded)
     {
         //  Füllt die Labels mit den Metadaten des geladenen Transkripts.
-        searchButton->setVisible (true);
-        toggleButton->setVisible (true);
         nameLabel->setText (currentName ());
         timeLabel->setText (m_script->getDurationAsString ());
     }
@@ -541,8 +477,6 @@ void MainWindow::updateUiForCurrentMeeting ()
         nameLabel->setText ("Keine Aufnahme geladen");
         timeLabel->setText ("00:00:00.0");
         transcriptView->clear ();
-        searchButton->setVisible (false);
-        toggleButton->setVisible (false);
     }
 }
 
@@ -739,7 +673,7 @@ void MainWindow::updateTranscriptionInDatabase ()
 
     if (!lookupQuery.exec () || !lookupQuery.next ())
     {
-        saveTranscription ();
+        QMessageBox::warning (this, tr ("Fehler"), tr ("Meeting nicht gefunden."));
         return;
     }
 
@@ -752,9 +686,8 @@ void MainWindow::updateTranscriptionInDatabase ()
     updateMeeting.bindValue (":id", meetingId);
     if (!updateMeeting.exec ())
     {
-        qWarning ()
-            << "❌ Fehler beim Aktualisieren des Meetings:"
-            << updateMeeting.lastError ().text ();
+        qWarning () << "❌ Fehler beim Aktualisieren des Meetings:"
+                    << updateMeeting.lastError ().text ();
         return;
     }
 
@@ -827,9 +760,8 @@ void MainWindow::updateTranscriptionInDatabase ()
             }
             else
             {
-                qWarning ()
-                    << "Sprecher konnte nicht hinzugefügt werden:"
-                    << insertSpeaker.lastError ().text ();
+                qWarning () << "Sprecher konnte nicht hinzugefügt werden:"
+                            << insertSpeaker.lastError ().text ();
             }
         }
 
@@ -873,21 +805,70 @@ void MainWindow::saveTranscription ()
                                               tr ("Neuer Titel"),
                                               tr ("Geben Sie einen neuen Meeting-Titel ein:"));
     if (newTitle.trimmed ().isEmpty ())
+        return;
+
+    QSqlQuery checkQuery (db);
+    checkQuery.prepare ("SELECT id FROM besprechungen WHERE titel = :titel");
+    checkQuery.bindValue (":titel", newTitle);
+    checkQuery.exec ();
+    if (checkQuery.next ())
     {
+        QMessageBox::warning (this, tr ("Fehler"), tr ("Meeting-Titel existiert bereits."));
         return;
     }
 
-    if (!m_databaseManager->saveNewTranscription (m_script, newTitle))
+    // Neue Besprechung einfügen
+    QSqlQuery insertMeeting (db);
+    insertMeeting.prepare (
+        "INSERT INTO besprechungen (titel, created_at) VALUES (:titel, :created_at)");
+    insertMeeting.bindValue (":titel", newTitle);
+    insertMeeting.bindValue (":created_at", QVariant (m_script->dateTime ()));
+
+    if (!insertMeeting.exec ())
     {
-        QMessageBox::warning (this, "Fehler", "Transkript konnte nicht gespeichert werden.");
+        qWarning () << "Fehler beim Einfügen des Meetings:" << insertMeeting.lastError ().text ();
+        QMessageBox::warning (this, tr ("Fehler"), tr ("Konnte neues Meeting nicht speichern."));
         return;
+    }
+
+    int newMeetingId = insertMeeting.lastInsertId ().toInt ();
+    if (newMeetingId == 0)
+    {
+        qWarning () << "Konnte keine Meeting-ID abrufen.";
+        return;
+    }
+
+    // Segmente einfügen
+    for (const MetaText &segment : m_script->getMetaTexts ())
+    {
+        int speakerId = getOrInsertSpeakerId (segment.Speaker, db);
+
+        QString targetColumn = m_script->isEdited () ? "verarbeiteter_text" : "roher_text";
+
+        QSqlQuery insertQuery (db);
+        insertQuery.prepare (QString (R"(
+            INSERT INTO aussagen (besprechungen_id, zeit_start, zeit_ende, %1, sprecher_id)
+            VALUES (:besprechung_id, to_timestamp(:start), to_timestamp(:end), :text, :sprecher_id)
+        )")
+                                 .arg (targetColumn));
+
+        insertQuery.bindValue (":besprechung_id", newMeetingId);
+        insertQuery.bindValue (":start", segment.Start.toDouble ());
+        insertQuery.bindValue (":end", segment.End.toDouble ());
+        insertQuery.bindValue (":text", segment.Text);
+        insertQuery.bindValue (":sprecher_id", speakerId);
+
+        if (!insertQuery.exec ())
+        {
+            qWarning () << "Fehler beim Einfügen einer Aussage:"
+                        << insertQuery.lastError ().text ();
+        }
     }
 
     m_script->setName (newTitle);
-    meetingList->addItem (newTitle);
-    m_transcriptions[newTitle] = m_script;
-
     QMessageBox::information (this, tr ("Gespeichert"), tr ("Neues Transkript gespeichert."));
+
+    meetingList->addItem (m_script->name ());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -900,17 +881,13 @@ int MainWindow::getOrInsertSpeakerId (
     query.bindValue (":name", name);
 
     if (query.exec () && query.next ())
-    {
         return query.value (0).toInt ();
-    }
 
     QSqlQuery insert (db);
     insert.prepare ("INSERT INTO sprecher (name) VALUES (:name) RETURNING id");
     insert.bindValue (":name", name);
     if (insert.exec () && insert.next ())
-    {
         return insert.value (0).toInt ();
-    }
 
     return -1;
 }
@@ -962,13 +939,11 @@ void MainWindow::loadTranscriptionFromJson ()
 
 //--------------------------------------------------------------------------------------------------
 
-/*
 void MainWindow::saveTranscriptionToJson ()
 {
     //  ToDo: speichern, falls Pfad vorhanden, ansonsten saveTranscriptionToJsonAs
     return;
 }
-*/
 
 //--------------------------------------------------------------------------------------------------
 
@@ -999,15 +974,14 @@ void MainWindow::restoreOriginalTranscription ()
 
     QString meetingTitle = item->text ();
     loadMeetingTranscription (meetingTitle, "roher_text");
-    updateTranscriptStatusAnzeige (m_script->getViewMode ());
 }
+
 
 //--------------------------------------------------------------------------------------------------
 
 void MainWindow::loadMeetingTranscription (
     const QString &meetingTitle, const QString &textColumn)
 {
-    // Transkript aus der Datenbank laden
     QSqlDatabase db = QSqlDatabase::database ("supabase");
     if (!db.isOpen ())
     {
@@ -1053,9 +1027,7 @@ void MainWindow::loadMeetingTranscription (
     {
         QString text = stmtQuery.value (textColumn).toString ();
         if (!text.isEmpty ())
-        {
             hasText = true;
-        }
 
         QDateTime start = stmtQuery.value ("zeit_start").toDateTime ();
         QDateTime end = stmtQuery.value ("zeit_ende").toDateTime ();
@@ -1226,122 +1198,6 @@ void MainWindow::toggleTranscriptionVersion ()
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::openMultiSearchDialog ()
-{
-    // Dialog bei Bedarf erstellen
-    if (!m_multiSearchDialog)
-    {
-        m_multiSearchDialog = new MultiSearchDialog (this);
-    }
-    // Alle geladenen Transkripte dem Dialog übergeben
-    m_multiSearchDialog->setTranscriptionsMap (m_transcriptions);
-    // Mehrere Verbindungen vermeiden
-    disconnect (m_multiSearchDialog, nullptr, this, nullptr);
-    // Verbindung: Wenn ein Suchtreffer gewählt wurde
-    connect (m_multiSearchDialog,
-             &MultiSearchDialog::searchResultSelected,
-             this,
-             [=] (const QString &matchedText, const QString &meetingName)
-             {
-                 selectMeetingInList (meetingName);
-                 loadMeetingTranscription (meetingName, "verarbeiteter_text");
-                 highlightMatchedText (matchedText);
-             });
-    // Dialog modal anzeigen
-    m_multiSearchDialog->exec ();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void MainWindow::updateTranscriptStatusAnzeige (
-    TranscriptionViewMode newMode)
-{
-    QString labelText, color;
-    // Anzeigemodus prüfen und Beschriftung sowie Button-Text entsprechend setzen
-    if (m_script->getViewMode () == TranscriptionViewMode::Edited)
-    {
-        labelText = "Anzeige: Bearbeitetes Transkript";
-        toggleButton->setText ("Original anzeigen");
-        color = "orange";
-    }
-    else
-    {
-        labelText = "Anzeige: Originales Transkript";
-        toggleButton->setText ("Bearbeitet anzeigen");
-        color = "green";
-    }
-    // Statuslabel im UI aktualisieren
-    transkriptStatusLabel->setText (labelText);
-    transkriptStatusLabel->setStyleSheet ("font-weight: bold; color: " + color + ";");
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void MainWindow::highlightMatchedText (
-    const QString &text)
-{
-    // Keine Aktion, wenn View oder Text leer
-    if (!transcriptView || text.trimmed ().isEmpty ())
-    {
-        return;
-    }
-
-    QTextDocument *doc = transcriptView->document ();
-    QTextCursor highlightCursor (doc);
-
-    // Formatierung für Markierung definieren
-    QTextCharFormat highlightFormat;
-
-    //  Nutze Systemfarben anstatt selbst definierte
-    //highlightFormat.setBackground (QColor (0x44, 0x44, 0xFF)); // hell blau
-    //highlightFormat.setForeground (Qt::white);
-    auto pal = QApplication::palette ();
-    highlightFormat.setBackground (pal.accent ());
-    highlightFormat.setForeground (pal.highlightedText ());
-
-    bool found = false;
-    // Alle Vorkommen des Texts markieren
-    while (!(highlightCursor = doc->find (text, highlightCursor)).isNull ())
-    {
-        highlightCursor.mergeCharFormat (highlightFormat);
-        found = true;
-    }
-    // Cursor zur ersten Fundstelle setzen und sichtbar machen
-    if (found)
-    {
-        QTextCursor firstCursor = doc->find (text);
-        if (!firstCursor.isNull ())
-        {
-            transcriptView->setTextCursor (firstCursor);
-            transcriptView->ensureCursorVisible ();
-            transcriptView->setFocus ();
-        }
-    }
-    else
-    {
-        qDebug () << "Keine Treffer:" << text;
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-
-void MainWindow::selectMeetingInList (
-    const QString &meetingName)
-{
-    // Durchlaufe die Meetingliste und wähle den passenden Eintrag aus
-    for (int i = 0; i < meetingList->count (); ++i)
-    {
-        QListWidgetItem *item = meetingList->item (i);
-        if (item && item->text () == meetingName)
-        {
-            meetingList->setCurrentItem (item); // Auswahl im UI setzen
-            break;
-        }
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-
 void MainWindow::onMeetingSelected (
     QListWidgetItem *item)
 {
@@ -1435,6 +1291,12 @@ void MainWindow::onPollTranscripts ()
 
 void MainWindow::onSaveAudio ()
 {
+
+    /** @Audio Pakize Gökkaya */
+    /** setupAudioIntel();
+
+        stopRecording();
+
     QString path = QFileDialog::getSaveFileName (this,
                                                  tr ("Audio speichern"),
                                                  QString (),
@@ -1617,3 +1479,157 @@ void MainWindow::onGenerateTags ()
 
 //--------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------
+
+
+void MainWindow::setupAudioIntel() {
+    // 1. Audioformat konfigurieren (Qt 6 Style)
+    QAudioFormat format;
+    format.setSampleRate(48000);  // 48kHz für Intel optimiert
+    format.setChannelCount(2);
+    format.setSampleFormat(QAudioFormat::Int16);  // Neu in Qt 6 (ersetzt SampleSize/Type)
+
+    // 2. BlackHole-Gerät finden
+    QAudioDevice inputDevice;
+    const auto availableDevices = QMediaDevices::audioInputs();
+
+    for (const auto &device : availableDevices) {
+        if (device.description().contains("BlackHole", Qt::CaseInsensitive)) {
+            inputDevice = device;
+            break;
+        }
+    }
+
+    if (inputDevice.isNull()) {
+        qDebug() << "BlackHole nicht gefunden! Verfügbare Geräte:";
+        for (const auto &device : availableDevices) {
+            qDebug() << "-" << device.description()
+            << "(Formate:" << device.supportedSampleFormats() << ")";
+        }
+        return;
+    }
+
+    // 3. Aufnahme vorbereiten
+    m_audioInput.reset(new QAudioInput(inputDevice));
+    m_recorder.reset(new QMediaRecorder);
+
+    m_captureSession.setAudioInput(m_audioInput.get());
+    m_captureSession.setRecorder(m_recorder.get());
+
+    // 4. Ausgabedatei konfigurieren
+    QString outputPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                         + "/aufnahme_intel.wav";
+    m_recorder->setOutputLocation(QUrl::fromLocalFile(outputPath));
+
+    // 5. Signal für Zustandsänderungen verbinden
+    connect(m_recorder.get(), &QMediaRecorder::recorderStateChanged,
+            this, &MainWindow::onRecordingStateChanged);
+
+    // 6. Aufnahme starten
+    m_recorder->record();
+    qDebug() << "Aufnahme gestartet nach:" << outputPath;
+}
+
+void MainWindow::onRecordingStateChanged(QMediaRecorder::RecorderState state) {
+    switch (state) {
+    case QMediaRecorder::StoppedState:
+        qDebug() << "Aufnahme gestoppt";
+        break;
+    case QMediaRecorder::RecordingState:
+        qDebug() << "Aufnahme läuft...";
+        break;
+    case QMediaRecorder::PausedState:
+        qDebug() << "Aufnahme pausiert";
+        break;
+    }
+}
+
+
+
+/** @author Pakize Gökkaya */
+    /**
+ * @brief Initialisiert die Audioaufnahme über das virtuelle Gerät "BlackHole" und startet die Aufzeichnung als WAV-Datei.
+ *
+ * Diese Methode sucht nach einem Eingabegerät mit dem Namen "BlackHole", wählt ein passendes Audioformat
+ * (48 kHz, Stereo, 16 Bit) und richtet damit eine Aufnahme mit `QAudioInput` und `QMediaRecorder` ein.
+ *
+ * Wenn das Gerät oder das gewünschte Format nicht verfügbar ist, wird ein alternativer Pfad gewählt oder abgebrochen.
+ *
+ * Die aufgenommene Datei wird unter `~/Documents/aufnahme_intel.wav` gespeichert.
+ *
+ * @note Die Aufnahme startet automatisch, nachdem alles initialisiert wurde.
+ * @author Pakize Gökkaya
+ */
+    void MainWindow::setupAudioIntel() {
+        // 1. Gewünschtes Audioformat definieren
+        QAudioFormat format;
+        format.setSampleRate(48000);        // 48kHz
+        format.setChannelCount(2);          // Stereo
+        format.setSampleFormat(QAudioFormat::Int16);  // 16 Bit Samples
+
+        // 2. Suche das "BlackHole" Audioeingabegerät
+        QAudioDevice inputDevice;
+        const auto devices = QMediaDevices::audioInputs();
+
+        for (const auto &device : devices) {
+            if (device.description().contains("BlackHole", Qt::CaseInsensitive)) {
+                inputDevice = device;
+                break;
+            }
+        }
+
+        // 3. Falls BlackHole nicht gefunden, Fehler melden und abbrechen
+        if (inputDevice.isNull()) {
+            qDebug() << "BlackHole Audioeingabegerät nicht gefunden!";
+            return;
+        }
+
+        // 4. Prüfe, ob das Format vom Gerät unterstützt wird
+        if (!inputDevice.isFormatSupported(format)) {
+            qWarning() << "Gewähltes Audioformat wird nicht unterstützt, nehme das erste unterstützte Format.";
+            auto supportedFormats = inputDevice.supportedFormats();
+            if (supportedFormats.isEmpty()) {
+                qWarning() << "Keine unterstützten Formate verfügbar. Aufnahme nicht möglich.";
+                return;
+            }
+            format = supportedFormats.first();
+        }
+
+        // 5. Erstelle QAudioInput mit dem Gerät und Format
+        m_audioInput.reset(new QAudioInput(inputDevice, format, this));
+
+        // 6. Setze AudioInput im CaptureSession
+        m_captureSession.setAudioInput(m_audioInput.get());
+
+        // 7. Erstelle MediaRecorder mit CaptureSession
+        m_recorder.reset(new QMediaRecorder(&m_captureSession));
+
+        // 8. Setze Speicherort der WAV-Datei
+        QString outputPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                             + "/aufnahme_intel.wav";
+        m_recorder->setOutputLocation(QUrl::fromLocalFile(outputPath));
+
+        // 9. Verbinde Signal für Statusänderungen
+        connect(m_recorder.get(), &QMediaRecorder::recorderStateChanged,
+                this, &MainWindow::onRecordingStateChanged);
+
+        // 10. Starte die Aufnahme
+        m_recorder->record();
+
+        qDebug() << "Aufnahme gestartet. Speichert in:" << outputPath;
+    }
+
+    /**
+ * @brief Beendet eine laufende Audioaufnahme.
+ *
+ * Falls derzeit eine Aufnahme aktiv ist, wird sie gestoppt und eine entsprechende Meldung ausgegeben.
+ * Ist keine Aufnahme aktiv, erfolgt ein Hinweis im Debug-Log.
+ */
+    void MainWindow::stopRecording()
+    {
+        if (m_recorder && m_recorder->recorderState() == QMediaRecorder::RecordingState) {
+            m_recorder->stop();
+            qDebug() << "Aufnahme wurde gestoppt.";
+        } else {
+            qDebug() << "Keine laufende Aufnahme zu stoppen.";
+        }
+    }

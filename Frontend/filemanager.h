@@ -43,9 +43,9 @@ public:
      * und wird entfernt, sobald die Anwendung mit der Datenbank verknüpft wird.
      * @return Der vollständige Verzeichnispfad.
     QString getMeetingsDirectory () const;
+     
 
-
-
+    
      * @brief Erstellt den vollständigen Dateipfad für eine bestimmte Meeting-JSON-Datei.
      * @todo Diese Methode ist nur ein temporärer Platzhalter für die Demonstration
      * und wird entfernt, sobald die Anwendung mit der Datenbank verknüpft wird.
@@ -53,10 +53,10 @@ public:
      * @param isEdited Wenn true, wird der Pfad zur "_bearbeitet.json"-Version zurückgegeben,
      * andernfalls zur "_original.json".
      * @return Der vollständige Dateipfad.
-
+     
     QString getMeetingJsonPath (const QString &meetingId, bool isEdited) const;
 
-
+    
      * @brief Durchsucht das Meeting-Verzeichnis und gibt eine Liste aller gefundenen Meeting-IDs zurück.
      * @todo Diese Methode ist nur ein temporärer Platzhalter für die Demonstration
      * und wird entfernt, sobald die Anwendung mit der Datenbank verknüpft wird.

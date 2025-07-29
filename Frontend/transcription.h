@@ -55,8 +55,13 @@ struct MetaText
     }
 };
 
-// Definiert den aktuellen Anzeigemodus des Transkripts
-enum class TranscriptionViewMode {
+/**
+ * @author Yolanda Fiska
+ * @class TranscriptionViewMode
+ * @brief Definiert den aktuellen Anzeigemodus des Transkripts
+ */
+enum class TranscriptionViewMode
+{
     Original,
     Edited
 };
@@ -96,8 +101,8 @@ public:
 
     /** @brief Ändert den Sprecher für ein einzelnes, durch Zeitstempel identifiziertes Segment. */
     bool changeSpeakerForSegment (const QString &start,
-                                 const QString &end,
-                                 const QString &newSpeaker);
+                                  const QString &end,
+                                  const QString &newSpeaker);
 
     /** @brief Gibt eine konstante Referenz auf die Liste aller Textsegmente zurück. */
     const QList<MetaText> &getMetaTexts () const { return m_content; }
@@ -113,8 +118,12 @@ public:
     QDateTime dateTime () const { return m_startTime; }
     QString getDurationAsString () const;
 
-    bool isEdited() const { return m_changed; }
-    void setEdited(bool value) { m_changed = value; }
+    bool isEdited () const { return m_changed; }
+    void setEdited (
+        bool value)
+    {
+        m_changed = value;
+    }
 
     // --- Tag-Management ---
     QStringList tags () const { return m_tags; }
@@ -124,8 +133,6 @@ public:
     bool hasTag (const QString &tag) const;
     QList<MetaText> segmentsWithTag (const QString &tag) const;
 
-    /** @brief vergleicht die Inhalt von zwei Transkriptionen. */
-    bool isContentEqual(const Transcription* other) const;
 public slots:
     /** @brief Fügt ein neues Textsegment zum Transkript hinzu. */
     void add (const MetaText &part);
@@ -145,15 +152,13 @@ public slots:
     /** @brief Setzt das Startdatum und die Uhrzeit des Meetings. */
     void setDateTime (QDateTime dateTime);
 
-    /**
-     *  @author Yolanda Fiska
+    /** @author Yolanda Fiska
      *  @brief Setzt den aktuellen Anzeigemodus (Original oder Bearbeitet). */
-    void setViewMode(TranscriptionViewMode mode);
+    void setViewMode (TranscriptionViewMode mode);
 
-    /**
-     *  @author Yolanda Fiska
+    /** @author Yolanda Fiska
      *  @brief Gibt den aktuellen Anzeigemodus zurück*/
-    TranscriptionViewMode getViewMode() const;
+    TranscriptionViewMode getViewMode () const;
 
 signals:
     /** @brief Wird bei jeder sichtbaren Änderung der Daten gesendet. Dient der UI-Aktualisierung. */
@@ -179,7 +184,8 @@ private:
     // Meeting-Metadaten
     QString m_meetingName; ///< Der Name des Meetings.
     QDateTime m_startTime; ///< Das Startdatum und die -uhrzeit des Meetings.
-    TranscriptionViewMode viewMode = TranscriptionViewMode::Edited; // Standardmäßig Bearbeitet anzeigen
+    TranscriptionViewMode m_viewMode
+        = TranscriptionViewMode::Original; // Standardmäßig Original anzeigen
 };
 
 #endif // TRANSCRIPTION_H

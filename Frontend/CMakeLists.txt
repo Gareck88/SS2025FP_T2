@@ -9,13 +9,11 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Qt-Komponenten finden
+find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets Network Concurrent Sql Multimedia)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent Sql Multimedia)
 
-find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets Network Concurrent Sql)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent Sql)
-
-# Findet die PostgreSQL-Bibliothek (sollte für Win, Linux & Mac funktionieren)
-find_package(PostgreSQL REQUIRED)
-
+# Platform-spezifische Quellcodedateien
 set(LINUX_SOURCES
     pulsecapturethread.h
     pulsecapturethread.cpp
@@ -28,8 +26,11 @@ set(WIN_SOURCES
 )
 
 set(MAC_SOURCES
+    maccapturethread.h
+    maccapturethread.cpp
 )
 
+# Hauptquellcodedateien
 set(PROJECT_SOURCES
     main.cpp
     mainwindow.cpp
@@ -64,11 +65,9 @@ set(PROJECT_SOURCES
     databasemanager.cpp
     searchdialog.h
     searchdialog.cpp
-    multisearchdialog.h
-    multisearchdialog.cpp
 )
 
-
+# Platform-spezifische Konfiguration
 if(WIN32)
     qt_add_executable(AudioTranskriptor
         MANUAL_FINALIZATION
@@ -77,9 +76,7 @@ if(WIN32)
     )
 elseif(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
-    # libpulse-simple
     pkg_check_modules(PULSEAUDIO REQUIRED libpulse-simple)
-
     include_directories(PRIVATE ${PULSEAUDIO_INCLUDE_DIRS})
 
     qt_add_executable(AudioTranskriptor
@@ -88,8 +85,62 @@ elseif(UNIX AND NOT APPLE)
         ${LINUX_SOURCES}
     )
 elseif(APPLE)
-    # Use Homebrew's PostgreSQL@14 path
-    set(LIBPQ_ROOT "/opt/homebrew/lib/postgresql@14")
+    # Architekturerkennung
+    execute_process(COMMAND uname -m OUTPUT_VARIABLE ARCHITECTURE OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    # Alle möglichen Suchpfade
+    set(SEARCH_PATHS_ARM64
+        "/opt/homebrew/opt/postgresql@14/lib/libpq.dylib"
+        "/opt/homebrew/lib/libpq.dylib"
+        "/opt/homebrew/opt/libpq/lib/libpq.dylib"
+    )
+
+    set(SEARCH_PATHS_X86_64
+        "/usr/local/opt/postgresql@14/lib/libpq.dylib"
+        "/usr/local/lib/libpq.dylib"
+        "/usr/local/opt/libpq/lib/libpq.dylib"
+    )
+
+    # Durchsuchung aller Pfade
+    if(ARCHITECTURE STREQUAL "arm64")
+        foreach(PATH IN LISTS SEARCH_PATHS_ARM64)
+            if(EXISTS "${PATH}")
+                set(PQ_LIB "${PATH}")
+                break()
+            endif()
+        endforeach()
+        set(QT_PLUGINS_DIR "/opt/homebrew/lib/qt/plugins")
+    else()
+        foreach(PATH IN LISTS SEARCH_PATHS_X86_64)
+            if(EXISTS "${PATH}")
+                set(PQ_LIB "${PATH}")
+                break()
+            endif()
+        endforeach()
+        set(QT_PLUGINS_DIR "/usr/local/lib/qt/plugins")
+    endif()
+
+    # Header-Pfad ableiten
+    if(PQ_LIB MATCHES "postgresql@14")
+        string(REPLACE "/lib/libpq.dylib" "/include" PQ_INCLUDE_DIR "${PQ_LIB}")
+    else()
+        string(REPLACE "/lib/libpq.dylib" "/include" PQ_INCLUDE_DIR "${PQ_LIB}")
+    endif()
+
+    if(NOT PQ_LIB)
+        message(FATAL_ERROR "libpq.dylib nicht gefunden in:\n"
+                "Apple Silicon: ${SEARCH_PATHS_ARM64}\n"
+                "Intel: ${SEARCH_PATHS_X86_64}\n\n"
+                "Installation prüfen mit:\n"
+                "1. brew install postgresql@14\n"
+                "2. ODER brew install libpq\n"
+                "3. brew link --force libpq")
+    else()
+        message(STATUS "Gefundene PostgreSQL-Bibliothek: ${PQ_LIB}")
+        message(STATUS "Verwendete Include-Pfade: ${PQ_INCLUDE_DIR}")
+    endif()
+
+    include_directories(${PQ_INCLUDE_DIR})
 
     qt_add_executable(AudioTranskriptor
         MANUAL_FINALIZATION
@@ -97,37 +148,60 @@ elseif(APPLE)
         ${MAC_SOURCES}
     )
 
-    # Include libpq headers if needed (adjust if headers are elsewhere)
-    # include_directories("/opt/homebrew/include")
+    target_link_libraries(AudioTranskriptor PRIVATE "${PQ_LIB}")
 
-    # Link the libpq library
-    # target_link_directories(AudioTranskriptor PRIVATE ${LIBPQ_ROOT})
-    # target_link_libraries(AudioTranskriptor PRIVATE pq)
+    # Qt SQL-Treiber konfigurieren
+    get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
+    execute_process(
+        COMMAND ${QT_QMAKE_EXECUTABLE} -query QT_INSTALL_PLUGINS
+        OUTPUT_VARIABLE QT_PLUGINS_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
 
+    # Treiber und Abhängigkeiten ins Bundle kopieren
+    add_custom_command(TARGET AudioTranskriptor POST_BUILD
+        # Verzeichnisse erstellen
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AudioTranskriptor>/../Frameworks"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:AudioTranskriptor>/../PlugIns/sqldrivers"
+
+        # Bibliotheken kopieren
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${PQ_LIB}"
+            "$<TARGET_FILE_DIR:AudioTranskriptor>/../Frameworks/libpq.dylib"
+
+        # Treiber kopieren
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${QT_PLUGINS_DIR}/sqldrivers/libqsqlpsql.dylib"
+            "$<TARGET_FILE_DIR:AudioTranskriptor>/../PlugIns/sqldrivers/"
+
+        # RPATH setzen
+        COMMAND install_name_tool -add_rpath "@loader_path/../Frameworks"
+            "$<TARGET_FILE_DIR:AudioTranskriptor>/../PlugIns/sqldrivers/libqsqlpsql.dylib"
+
+        COMMENT "Kopiere PostgreSQL-Komponenten ins App-Bundle"
+    )
 endif()
 
-
-# Python-Umgebung einrichten
+# Python-Umgebung kopieren
 set(PYTHON_SRC_DIR "${CMAKE_SOURCE_DIR}/python")
 set(PYTHON_DST_DIR "${CMAKE_CURRENT_BINARY_DIR}/python")
-
 add_custom_command(
     TARGET AudioTranskriptor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${PYTHON_SRC_DIR}" "${PYTHON_DST_DIR}"
-    COMMENT "Kopiere python/ nach ${PYTHON_DST_DIR}"
+    COMMENT "Kopiere Python-Skripte"
 )
 
+# Haupt-Bibliotheken verlinken
 target_link_libraries(AudioTranskriptor PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::Concurrent
     Qt${QT_VERSION_MAJOR}::Sql
+    Qt${QT_VERSION_MAJOR}::Multimedia
 )
 
-# Verlinkt die PostgreSQL-Bibliothek
-target_link_libraries(AudioTranskriptor PRIVATE PostgreSQL::PostgreSQL)
-
+# Platform-spezifische Bibliotheken
 if(WIN32)
     target_link_libraries(AudioTranskriptor PRIVATE
         ole32
@@ -138,12 +212,9 @@ elseif(UNIX AND NOT APPLE)
     target_link_libraries(AudioTranskriptor PRIVATE
         ${PULSEAUDIO_LIBRARIES}
     )
-elseif(APPLE)
 endif()
 
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
+# macOS-Bundle-Einstellungen
 if(${QT_VERSION} VERSION_LESS 6.1.0)
   set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.AudioTranskriptor)
 endif()
@@ -156,6 +227,7 @@ set_target_properties(AudioTranskriptor PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
+# Installationsziele
 include(GNUInstallDirs)
 install(TARGETS AudioTranskriptor
     BUNDLE DESTINATION .
@@ -166,4 +238,3 @@ install(TARGETS AudioTranskriptor
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(AudioTranskriptor)
 endif()
-

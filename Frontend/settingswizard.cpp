@@ -82,6 +82,9 @@ SettingsWizard::SettingsWizard (
     marginLeftSpin->setValue (settings.value ("marginLeft", 25).toInt ());
     settings.endGroup ();
 
+    pythonEdit->setText (settings.value ("pythonPath").toString ());
+    scriptEdit->setText (settings.value ("scriptPath").toString ());
+
     settings.beginGroup ("Database");
     dbHostEdit->setText (settings.value ("host", "localhost").toString ());
     dbPortSpin->setRange (1, 65535);
@@ -93,7 +96,7 @@ SettingsWizard::SettingsWizard (
     settings.endGroup ();
 
     //  Lade Standard-Pfade
-    QString initWavPath, initAsrWavPath;
+    QString initWavPath, initAsrWavPath, initMeetingsPath;
     FileManager fm (this);
     initWavPath = fm.getTempWavPath (false);
     initAsrWavPath = fm.getTempWavPath (true);

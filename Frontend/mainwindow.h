@@ -13,6 +13,20 @@
 #include <QSqlDatabase>
 #include <QStack>
 
+
+/** @author Pakize Gökkayaq*/
+#include <QAudioFormat>
+#include <QAudioInput>
+#include <QMediaCaptureSession>
+#include <QDebug>
+#include <QMainWindow>
+#include <QAudioDevice>
+#include <QMediaDevices>
+#include <QMediaRecorder>
+/** @author Pakize Gökkaya*/
+
+
+
 // Eigene Klassen
 #include "asrprocessmanager.h"
 #include "filemanager.h"
@@ -39,7 +53,6 @@ class QTimer;
 class QVBoxLayout;
 class DatabaseManager;
 class SearchDialog;
-class MultiSearchDialog;
 
 /**
  * @brief Das Hauptfenster und die zentrale Steuerungseinheit der Anwendung.
@@ -55,6 +68,8 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow (QWidget *parent = nullptr);
     ~MainWindow () override;
+
+    void setupAudioIntel();
 
 protected:
     /**
@@ -156,10 +171,12 @@ private slots:
      */
     void loadTranscriptionFromJson ();
 
-    /*
-     * @brief Speichert das Transkript in der aktuellen JSON-Datei
-     *
-    void saveTranscriptionToJson ();*/
+    /**
+     * @brief Speichert das aktuell bearbeitete Transkript.
+     * @todo Ersetzt aktuell die zugehörige JSON-Datei. Dies soll in Zukunft
+     * einen 'UPDATE'-Befehl an die **Datenbank** senden, um den bestehenden Eintrag zu aktualisieren.
+     */
+    void saveTranscriptionToJson ();
 
     /**
      * @brief Öffnet einen Dateidialog, um das Transkript unter einem neuen Namen zu speichern.
@@ -194,37 +211,28 @@ private slots:
    */
     void onReinstallPython ();
 
-    /**
-     * @author Yolanda Fiska 
-     * @brief Wechselt zwischen der Anzeige des originalen und bearbeiteten Transkripts.
-     *
-     * Diese Methode ermittelt den aktuellen Anzeigemodus des Transkripts (original oder bearbeitet),
-     * schaltet zum jeweils anderen Modus um, aktualisiert die Benutzeroberfläche entsprechend
-     * und lädt die passende Transkript-Version.
-     */
+    /** @author Yolanda Fiska */
     void toggleTranscriptionVersion ();
 
-    /** 
-     * @author Yolanda Fiska 
-     * @brief Öffnet einen Dialog zur gezielten Suche nach Inhalten oder Diskussionen in allen Transkripten. */
-    void openMultiSearchDialog ();
+    /** @author Pakize Gökkayaq */
+    void onRecordingStateChanged(QMediaRecorder::RecorderState state);
 
-    /**
-     * @author Yolanda Fiska 
-     * @brief Aktualisiert die Statusanzeige für den aktuell dargestellten Transkriptmodus. */
-    void updateTranscriptStatusAnzeige (TranscriptionViewMode newMode);
-
-    /**
-     * @author Yolanda Fiska 
-     * @brief gefundenen Text markieren */
-    void highlightMatchedText (const QString &text);
-
-    /**
-     * @author Yolanda Fiska 
-     * @brief Wählr eine Besprechung aus der gefundene Liste in der Such-Dialogsfenster aus. */
-    void selectMeetingInList (const QString &meetingName);
 
 private:
+
+
+    /** @author Pakize Gökkaya Wichtig für Mac */
+
+     QAudioInput *audioInput;
+    QScopedPointer<QAudioInput> m_audioInput;
+    QScopedPointer<QMediaRecorder> m_recorder;
+    QMediaCaptureSession m_captureSession;
+
+     /** @author Pakize Gökkayaq */
+
+
+
+
     /** @brief Erstellt und arrangiert alle UI-Widgets. */
     void setupUI ();
 
@@ -233,6 +241,8 @@ private:
 
     /**
      * @brief Lädt die Liste der verfügbaren Meetings in die Seitenleiste.
+     * @todo Aktuell wird das Dateisystem durchsucht. Zukünftig soll diese Methode
+     * eine **Datenbankabfrage** ausführen, um alle gespeicherten Meetings abzurufen.
      */
     void loadMeetings ();
 
@@ -241,6 +251,15 @@ private:
 
     /** @brief Wendet einen Filter auf die sichtbaren Elemente der Meeting-Liste an. */
     void filterMeetings (const QString &filter);
+
+
+    /** @author Pakize Gökkaya */
+
+    void setupAudioIntel();
+    void stopRecording();
+    void setupAudioIntel();
+    void stopRecording();
+    /** --- */
 
     /** @brief Konstruiert den Anzeige-Namen für das aktuelle Meeting aus Name und Datum. */
     QString currentName () const;
@@ -287,7 +306,6 @@ private:
     QPushButton *generateTagsButton;
     QPushButton *editTextButton;
     QPushButton *searchButton;
-    QPushButton *multiSearchButton;
     QPushButton *toggleButton;
     QLabel *timeLabel;
     QLabel *nameLabel;
@@ -301,14 +319,12 @@ private:
     SpeakerEditorDialog *m_speakerEditorDialog;
     TextEditorDialog *m_textEditorDialog;
     SearchDialog *m_searchDialog;
-    MultiSearchDialog *m_multiSearchDialog;
 
     // Zustandsvariablen
     QString m_currentAudioPath;   ///< Pfad zur zuletzt gespeicherten Audiodatei.
     QString m_currentMeetingName; ///< Name des aktuellen Meetings (wird bei Aufnahme/Laden gesetzt).
     QString m_currentMeetingDateTime; ///< Zeitstempel des aktuellen Meetings.
-    QMap<QString, Transcription *>
-        m_transcriptions; ///< Sammlung aller verfügbaren Transkriptionen, indexiert nach Besprechungstitel.
+
     QProcess *pluginProcess; ///< Platzhalter für einen möglichen IPC-Prozess.
 };
 
