@@ -41,6 +41,7 @@ public:
      */
     bool checkAndSetup (bool forceReinstall = false, QWidget *parentWidget = nullptr);
 
+
 private slots:
     /**
      * @brief Slot zur Verarbeitung des `installationFinished`-Signals vom `InstallationDialog`.

@@ -18,14 +18,14 @@ TranscriptPdfExporter::TranscriptPdfExporter (
     //  Liest die vom Benutzer konfigurierten Layout-Einstellungen aus den QSettings.
     //  Falls keine Einstellungen vorhanden sind, werden sinnvolle Standardwerte verwendet.
     QSettings settings;
-    m_fontSizeHeadline = settings.value ("fontSizeHeadline", 42).toInt ();
-    m_fontSizeMetadata = settings.value ("fontSizeMetadata", 10).toInt ();
-    m_fontSizeBody = settings.value ("fontSizeBody", 12).toInt ();
-    m_fontFamily = settings.value ("fontFamily", "sans-serif").toString ();
-    m_marginLeft = settings.value ("marginLeft", 25).toInt ();
-    m_marginTop = settings.value ("marginTop", 25).toInt ();
-    m_marginRight = settings.value ("marginRight", 25).toInt ();
-    m_marginBottom = settings.value ("marginBottom", 25).toInt ();
+    m_fontSizeHeadline = settings.value ("pdf/fontSizeHeadline", 42).toInt ();
+    m_fontSizeMetadata = settings.value ("pdf/fontSizeMetadata", 10).toInt ();
+    m_fontSizeBody = settings.value ("pdf/fontSizeBody", 12).toInt ();
+    m_fontFamily = settings.value ("pdf/fontFamily", "sans-serif").toString ();
+    m_marginLeft = settings.value ("pdf/marginLeft", 25).toInt ();
+    m_marginTop = settings.value ("pdf/marginTop", 25).toInt ();
+    m_marginRight = settings.value ("pdf/marginRight", 25).toInt ();
+    m_marginBottom = settings.value ("pdf/marginBottom", 25).toInt ();
 }
 
 //--------------------------------------------------------------------------------------------------

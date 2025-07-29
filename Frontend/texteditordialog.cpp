@@ -101,7 +101,6 @@ void TextEditorDialog::onTranscriptionChanged ()
 {
     //  Lädt die Tabelle neu, wenn sich das zugrundeliegende Datenmodell ändert.
     populateTable ();
-    m_transcription->setEdited(true);
     setDialogStatus (tr ("Transkription aktualisiert."), true);
 }
 

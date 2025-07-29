@@ -1,7 +1,10 @@
 numpy
-git+https://github.com/openai/whisper.git
-pyannote-audio
 torch
 torchaudio
-onnxruntime
+transformers
+pyctcdecode
+pyannote.audio
+scipy
 spacy
+https://github.com/kpu/kenlm/archive/master.zip
+
