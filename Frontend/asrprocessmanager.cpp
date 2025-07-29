@@ -1,4 +1,5 @@
 // asrprocessmanager.cpp
+//@author Fabian Scherer
 #include "asrprocessmanager.h"
 #include <QDebug>
 #include <QJsonDocument>

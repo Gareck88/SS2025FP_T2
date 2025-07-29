@@ -1,4 +1,5 @@
 // asrprocessmanager.h
+//@author Fabian Scherer
 #ifndef ASRPROCESSMANAGER_H
 #define ASRPROCESSMANAGER_H
 

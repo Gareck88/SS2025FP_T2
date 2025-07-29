@@ -1,5 +1,6 @@
+#@author Fabian Scherer
+
 import torch
-#import pyaudio
 import numpy as np
 import time
 import collections
@@ -9,9 +10,6 @@ import json
 
 # --- Importe für Diarisierung ---
 from pyannote.audio import Pipeline
-#from pyannote.audio.core.io import Audio # Wichtig für Pyannote's interne Audioverarbeitung
-#import torchaudio.transforms as T # Für Resampling, falls nötig
-#from scipy.spatial.distance import cdist # Für Sprecher-Abstands-Berechnung
 
 # --- Festlegen der Cache-Pfade (Standard und persistent auf Linux) ---
 new_base_cache_dir = os.path.expanduser("~/.cache/my_asr_models")
@@ -35,7 +33,6 @@ from transformers import AutoProcessor, AutoModelForCTC
 
 SAMPLE_RATE = 16000 # Dies MUSS 16kHz sein für Wav2Vec2 und pyannote
 CHUNK_SIZE_BYTES = 32000 # Audio-Chunk, der von der Pipe gelesen wird soll 1s lang sein (heißt doppelte samplerate, da 16bit integer)
-#CHUNK_SIZE_SAMPLES = SAMPLE_RATE * 1 # 1 Sekunde Audio-Chunk für ASR
 DIARIZATION_CHUNK_SIZE = 3 * SAMPLE_RATE # 3 Sekunden Audio-Chunk für Diarisierung
 DIARIZATION_OVERLAP_SAMPLES = int(SAMPLE_RATE * 1.5) # 1.5 Sekunden Überlappung für Diarisierung
 
@@ -44,7 +41,7 @@ DIARIZATION_OVERLAP_SAMPLES = int(SAMPLE_RATE * 1.5) # 1.5 Sekunden Überlappung
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Verwende Gerät: {device}")
 
-# --- DEUTSCHES Wav2Vec2-Modell über Hugging Face laden ---
+# --- Wav2Vec2-Modell über Hugging Face laden ---
 MODEL_ID = "aware-ai/wav2vec2-large-xlsr-53-german-with-lm" 
 
 def send_to_qt(message):
@@ -52,22 +49,18 @@ def send_to_qt(message):
         json_message = json.dumps(message) + "\n" # JSON-Nachricht und Zeilenumbruch
         sys.stdout.write(json_message)           # An Standardausgabe schreiben
         sys.stdout.flush()                       # WICHTIG: Puffer sofort leeren
-    except BrokenPipeError:
-        # Dies tritt auf, wenn das C++-Frontend (QProcess) seine Leseseite der Pipe schließt.
-        # Es ist ein sauberes Signal zum Beenden des Python-Skripts.
-        sys.exit(0)
     except Exception as e:
         print(f"Fehler beim Senden an Qt über stdout: {e}", file=sys.stderr)
 
 
-print(f"\nLade DEUTSCHES Wav2Vec2 ASR-Modell '{MODEL_ID}' und Processor (Tokenizer/Decoder)...")
+print(f"\nLade Wav2Vec2 ASR-Modell '{MODEL_ID}' und Processor (Tokenizer/Decoder)...")
 def load_models():
     global processor, vad_pipeline, speaker_embedding_pipeline, model
     try:
         processor = AutoProcessor.from_pretrained(MODEL_ID)
         model = AutoModelForCTC.from_pretrained(MODEL_ID).to(device)
         model.eval()
-        print("Deutsches Wav2Vec2-Modell und Processor erfolgreich geladen.")
+        print("Wav2Vec2-Modell und Processor erfolgreich geladen.")
         print(f"Modell-Logits-Größe (letzte Dimension): {model.config.vocab_size}")
 
 
@@ -76,11 +69,9 @@ def load_models():
         exit()
 
     # --- Pyannote.audio Diarisierungs-Pipeline laden ---
-    print(f"\nLade Pyannote.audio Diarisierungs-Pipeline (VAD & Speaker Embedding)...")
+    print(f"\nLade Pyannote.audio Diarisierungs-Pipeline...")
     try:
         # Pyannote benötigt einen HF-Token. Stelle sicher, dass du 'huggingface-cli login' ausgeführt hast.
-        # Alternativ: use_auth_token="hf_YOUR_TOKEN_HERE"
-        vad_pipeline = Pipeline.from_pretrained("pyannote/voice-activity-detection", use_auth_token=True).to(device)
         speaker_embedding_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1",
                                      use_auth_token=os.environ["HF_TOKEN"])
         print("Pyannote.audio Diarisierungs-Pipeline erfolgreich geladen.")
@@ -98,7 +89,6 @@ if __name__ == "__main__":
     load_models()
     # *** Statusmeldung an Qt senden: Backend ist bereit ***
     send_to_qt({"type": "ready", "message": "ready", "details": "Models loaded and backend ready for transcription."})
-    print("ASR-Backend: 'Bereit'-Signal an Qt gesendet.", file=sys.stderr)
     
     full_diarization_buffer = np.array([], dtype=np.int16)
     diarization_buffer_start_time = 0.0 # Um relative Zeitstempel zu verfolgen
@@ -122,20 +112,11 @@ if __name__ == "__main__":
 
         audio_chunk_np = np.frombuffer(chunk, dtype='int16')
 
-        if audio_chunk_np.size > 0: # Überprüfen, ob der Chunk nicht leer ist
-            print(f"DEBUG: Empfangene chunk_bytes Größe: {len(chunk)} Bytes" , file=sys.stderr)
-            print(f"DEBUG: audio_chunk_np Shape: {audio_chunk_np.shape}, Dtype: {audio_chunk_np.dtype}", file=sys.stderr)
-            print(f"DEBUG: audio_chunk_np min: {audio_chunk_np.min()}, max: {audio_chunk_np.max()}", file=sys.stderr)
-        else:
-            print("DEBUG: Empfangener Audio-Chunk ist leer.", file=sys.stderr)
-
         current_asr_audio_accumulator = np.concatenate((current_asr_audio_accumulator, audio_chunk_np))
         full_diarization_buffer = np.concatenate((full_diarization_buffer, audio_chunk_np))
         
         # --- Diarisierungs-Logik ---
-        print(f"DEBUG: diarization_buffer size: {full_diarization_buffer.shape[0]}", file=sys.stderr)
         if full_diarization_buffer.shape[0] >= (DIARIZATION_CHUNK_SIZE):
-            print("SD part", file=sys.stderr)
                     
             diarization_chunk_np = full_diarization_buffer[:DIARIZATION_CHUNK_SIZE]
             diarization_chunk_tensor = torch.from_numpy(diarization_chunk_np.astype(np.int16) / 32768.0).float().unsqueeze(0).to(device)
@@ -164,25 +145,13 @@ if __name__ == "__main__":
                 logits = model(input_values).logits
                 raw_decode_output = processor.batch_decode(logits.cpu().numpy())
                 
-                # --- DEBUG-Ausgaben für das Decoding-Ergebnis ---
-                print(f"\nDEBUG: raw_decode_output: {raw_decode_output}", file=sys.stderr)
-                print(f"DEBUG: type(raw_decode_output): {type(raw_decode_output)}", file=sys.stderr)
-                
                 transcribed_text_chunk = "" # Standardwert
                 # Zugriff auf das 'text'-Attribut des Wav2Vec2DecoderWithLMOutput-Objekts
                 # Das 'text'-Attribut ist eine Liste (z.B. ['Dies ist ein Test.'])
                 if hasattr(raw_decode_output, 'text') and isinstance(raw_decode_output.text, list) and len(raw_decode_output.text) > 0:
                     transcribed_text_chunk = raw_decode_output.text[0] # Nimm den ersten (und einzigen) String
-                print(f"DEBUG: transcribed_text_chunk BEFORE strip/join: '{transcribed_text_chunk}'", file=sys.stderr)
                 transcribed_text_chunk = transcribed_text_chunk.strip()
                 transcribed_text_chunk = " ".join(transcribed_text_chunk.split())
-                print(f"DEBUG: transcribed_text_chunk AFTER strip/join: '{transcribed_text_chunk}'", file=sys.stderr)
-                # Wenn decoded_list_of_strings kein gültiges Format hat, bleibt transcribed_text_chunk leer
-                print(f"DEBUG: transcribed_text_chunk BEFORE strip/join: '{transcribed_text_chunk}'", file=sys.stderr)
-                transcribed_text_chunk = transcribed_text_chunk.strip()
-                transcribed_text_chunk = " ".join(transcribed_text_chunk.split())
-                print(f"DEBUG: transcribed_text_chunk AFTER strip/join: '{transcribed_text_chunk}'", file=sys.stderr)
-                print(f"outside transcribed: {transcribed_text_chunk}", file=sys.stderr)
                 if transcribed_text_chunk: # Wird nur True, wenn der String nicht leer ist
                     
                     print(f"transcribed: {transcribed_text_chunk}", file=sys.stderr)

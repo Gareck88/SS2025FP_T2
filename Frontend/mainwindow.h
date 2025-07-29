@@ -159,11 +159,21 @@ private slots:
    */
     void onReinstallPython ();
 
-    // NEUER SLOT: Behandelt das backendReady-Signal vom ASR-Backend
+    /**
+   * @brief Behandelt das backendReady-Signal vom ASR-Backend
+   * @author Fabian Scherer
+   */
     void handleBackendReady ();
-    // NEUER SLOT: Behandelt empfangene Transkriptionen vom ASR-Backend
+    /**
+   * @brief Behandelt empfangene Transkriptionen vom ASR-Backend
+   * @author Fabian Scherer
+   */
     void handleTranscriptionReady(const QString &speaker, const QString &text);
-    // NEUER SLOT: Behandelt Fehlermeldungen vom ASR-Backend
+    // NEUER SLOT: 
+    /**
+   * @brief Behandelt Fehler- und Statusmeldungen vom ASR-Backend
+   * @author Fabian Scherer
+   */
     void handleBackendError(const QString &message);
 
 private:
