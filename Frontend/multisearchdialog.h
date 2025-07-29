@@ -84,7 +84,7 @@ private:
     QTimeEdit *endTimeEdit;       // Endzeitfilter
     QPushButton *searchButton;    // Button zur Auslösung der Suche
     QListWidget *resultsList;     // Anzeige der Suchergebnisse
-    QLabel *statusLabel;          // Statusmeldung (z. B. Trefferanzahl)
+    QLabel *statusLabel;          // Statusmeldung (z. B. Trefferanzahl)
     QDateEdit *dateFromEdit;      // Filter: Beginn des Datumsbereichs
     QDateEdit *dateToEdit;        // Filter: Ende des Datumsbereichs
     ///< Alle geladenen Transkriptionen (Meetingtitel → Transcription*)

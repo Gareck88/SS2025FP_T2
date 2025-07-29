@@ -59,7 +59,7 @@ private:
     QComboBox *tagFilter;        ///< Filterauswahl für Tags
     QPushButton *searchButton;   ///< Button zum Auslösen der Suche
     QListWidget *resultsList;    ///< Anzeige der Suchergebnisse
-    QLabel *statusLabel;         ///< Statusanzeige (z. B. Trefferanzahl)
+    QLabel *statusLabel;         ///< Statusanzeige (z. B. Trefferanzahl)
 
     Transcription *m_transcription = nullptr; ///< Aktive Transkription zur Durchsuchung
 

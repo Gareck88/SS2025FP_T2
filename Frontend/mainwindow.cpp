@@ -22,6 +22,7 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QtConcurrent> //  Fürs parallele Kopieren der Wav-Datei
+#include <QFormLayout>
 
 #include "audiofactory.h"
 #include "capturethread.h"
@@ -352,14 +353,11 @@ void MainWindow::doConnects ()
     connect (m_actionOpen, &QAction::triggered, this, &MainWindow::loadTranscriptionFromJson);
     connect (m_actionSaveAs, &QAction::triggered, this, &MainWindow::saveTranscriptionToJsonAs);
     connect (m_actionSaveToDBAs, &QAction::triggered, this, &MainWindow::saveTranscription);
-    connect (m_actionSaveToDB,
-             &QAction::triggered,
-             this,
-             &MainWindow::updateTranscriptionInDatabase);
+    connect (m_actionSaveToDB, &QAction::triggered, this, &MainWindow::updateTranscriptionInDatabase);
     connect (m_actionRestoreOriginal,
-             &QAction::triggered,
-             this,
-             &MainWindow::restoreOriginalTranscription);
+            &QAction::triggered,
+            this,
+            &MainWindow::restoreOriginalTranscription);
     connect (m_actionClose, &QAction::triggered, this, &MainWindow::close);
 
     //  Menü "Bearbeiten"
@@ -492,16 +490,16 @@ void MainWindow::loadMeetings ()
     meetingList->clear ();
 
     // Alle Besprechungen aus der Datenbank laden und in den Map speichern
-    m_transcriptions = m_databaseManager->loadAllTranscriptions ();
+    m_transcriptions = m_databaseManager->loadAllTranscriptions();
 
-    QStringList allData = m_transcriptions.keys ();
-    if (allData.isEmpty ())
-    {
-        meetingList->addItem ("Keine Besprechungen gefunden");
+    QStringList allData = m_transcriptions.keys();
+    if (allData.isEmpty()) {
+        meetingList->addItem("Keine Besprechungen gefunden");
         return;
     }
     //  Fügt die gefundenen Besprechungsnamen der Liste in der UI hinzu.
     meetingList->addItems (allData);
+
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -529,7 +527,8 @@ void MainWindow::updateUiForCurrentMeeting ()
         toggleButton->setVisible (true);
         nameLabel->setText (currentName ());
         timeLabel->setText (m_script->getDurationAsString ());
-        updateTranscriptStatusAnzeige (m_script->getViewMode ());
+        updateTranscriptStatusAnzeige(m_script->getViewMode());
+
     }
     else
     {
@@ -716,38 +715,32 @@ void MainWindow::onRedo ()
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::updateTranscriptionInDatabase ()
+void MainWindow::updateTranscriptionInDatabase()
 {
-    if (m_databaseManager->updateTranscription (m_script))
-    {
-        QMessageBox::information (this, "Erfolg", "Transkript aktualisiert.");
-    }
-    else
-    {
-        QMessageBox::warning (this, "Fehler", "Transkript konnte nicht aktualisiert werden.");
+    if (m_databaseManager->updateTranscription(m_script)) {
+        QMessageBox::information(this, "Erfolg", "Transkript aktualisiert.");
+    } else {
+        QMessageBox::warning(this, "Fehler", "Transkript konnte nicht aktualisiert werden.");
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::saveTranscription ()
+void MainWindow::saveTranscription()
 {
-    QString newTitle = QInputDialog::getText (this, tr ("Neuer Titel"), tr ("Meeting-Titel:"));
-    if (newTitle.trimmed ().isEmpty ())
-    {
+    QString newTitle = QInputDialog::getText(this, tr("Neuer Titel"), tr("Meeting-Titel:"));
+    if (newTitle.trimmed().isEmpty()) return;
+
+    if (!m_databaseManager->saveNewTranscription(m_script, newTitle)) {
+        QMessageBox::warning(this, "Fehler", "Transkript konnte nicht gespeichert werden.");
         return;
     }
 
-    if (!m_databaseManager->saveNewTranscription (m_script, newTitle))
-    {
-        QMessageBox::warning (this, "Fehler", "Transkript konnte nicht gespeichert werden.");
-        return;
-    }
-
-    meetingList->addItem (newTitle);
+    meetingList->addItem(newTitle);
     m_transcriptions[newTitle] = m_script;
-    QMessageBox::information (this, "Gespeichert", "Transkript gespeichert.");
+    QMessageBox::information(this, "Gespeichert", "Transkript gespeichert.");
 }
+
 
 //--------------------------------------------------------------------------------------------------
 
@@ -799,7 +792,7 @@ void MainWindow::loadTranscriptionFromJson ()
 /*
 void MainWindow::saveTranscriptionToJson ()
 {
-    //  evtl. ToDo: speichern, falls Pfad vorhanden, ansonsten saveTranscriptionToJsonAs
+    //  ToDo: speichern, falls Pfad vorhanden, ansonsten saveTranscriptionToJsonAs
     return;
 }
 */
@@ -838,13 +831,12 @@ void MainWindow::restoreOriginalTranscription ()
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::loadMeetingTranscription (
-    const QString &meetingTitle, const QString &textColumn)
+void MainWindow::loadMeetingTranscription(const QString &meetingTitle, const QString &textColumn)
 {
     // Transkript aus der Datenbank laden
-    m_databaseManager->loadMeetingTranscriptions (meetingTitle, textColumn, m_script);
+    m_databaseManager->loadMeetingTranscriptions(meetingTitle, textColumn, m_script);
     // UI aktualisieren
-    updateUiForCurrentMeeting ();
+    updateUiForCurrentMeeting();
 }
 //--------------------------------------------------------------------------------------------------
 
@@ -932,29 +924,26 @@ void MainWindow::onReinstallPython ()
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::toggleTranscriptionVersion ()
+void MainWindow::toggleTranscriptionVersion()
 {
     // Sicherstellen, dass ein Meeting und ein Transkript vorhanden ist
-    if (!meetingList->currentItem () || !m_script)
-    {
+    if (!meetingList->currentItem() || !m_script)
         return;
-    }
 
-    QString meetingTitle = meetingList->currentItem ()->text ();
-    TranscriptionViewMode currentMode = m_script->getViewMode ();
+    QString meetingTitle = meetingList->currentItem()->text();
+    TranscriptionViewMode currentMode = m_script->getViewMode();
     // Anzeigemodus umschalten
     TranscriptionViewMode newMode = (currentMode == TranscriptionViewMode::Original)
                                         ? TranscriptionViewMode::Edited
                                         : TranscriptionViewMode::Original;
 
     // Neue Modus setzen
-    m_script->setViewMode (newMode);
+    m_script->setViewMode(newMode);
     // Spaltenname für SQL-Zugriff bestimmen (je nach Modus)
-    QString column = (newMode == TranscriptionViewMode::Edited) ? "verarbeiteter_text"
-                                                                : "roher_text";
+    QString column = (newMode == TranscriptionViewMode::Edited) ? "verarbeiteter_text" : "roher_text";
     // Status im UI aktualisieren und Transkript neu laden
-    updateTranscriptStatusAnzeige (newMode);
-    loadMeetingTranscription (meetingTitle, column);
+    updateTranscriptStatusAnzeige(newMode);
+    loadMeetingTranscription(meetingTitle, column);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1010,49 +999,35 @@ void MainWindow::updateTranscriptStatusAnzeige (
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::highlightMatchedText (
-    const QString &text)
+void MainWindow::highlightMatchedText(const QString &text)
 {
     // Keine Aktion, wenn View oder Text leer
-    if (!transcriptView || text.trimmed ().isEmpty ())
-    {
-        return;
-    }
+    if (!transcriptView || text.trimmed().isEmpty()) return;
 
-    QTextDocument *doc = transcriptView->document ();
-    QTextCursor highlightCursor (doc);
+    QTextDocument *doc = transcriptView->document();
+    QTextCursor highlightCursor(doc);
 
     // Formatierung für Markierung definieren
     QTextCharFormat highlightFormat;
-
-    //  Nutze Systemfarben anstatt selbst definierte
-    auto pal = QApplication::palette ();
-    highlightFormat.setBackground (pal.accent ());
-    highlightFormat.setForeground (pal.highlightedText ());
-    // highlightFormat.setBackground (QColor ("#4444FF")); // hell blau
-    // highlightFormat.setForeground (Qt::white);
+    highlightFormat.setBackground(QColor("#4444FF")); // hell blau
+    highlightFormat.setForeground(Qt::white);
 
     bool found = false;
     // Alle Vorkommen des Texts markieren
-    while (!(highlightCursor = doc->find (text, highlightCursor)).isNull ())
-    {
-        highlightCursor.mergeCharFormat (highlightFormat);
+    while (!(highlightCursor = doc->find(text, highlightCursor)).isNull()) {
+        highlightCursor.mergeCharFormat(highlightFormat);
         found = true;
     }
     // Cursor zur ersten Fundstelle setzen und sichtbar machen
-    if (found)
-    {
-        QTextCursor firstCursor = doc->find (text);
-        if (!firstCursor.isNull ())
-        {
-            transcriptView->setTextCursor (firstCursor);
-            transcriptView->ensureCursorVisible ();
-            transcriptView->setFocus ();
+    if (found) {
+        QTextCursor firstCursor = doc->find(text);
+        if (!firstCursor.isNull()) {
+            transcriptView->setTextCursor(firstCursor);
+            transcriptView->ensureCursorVisible();
+            transcriptView->setFocus();
         }
-    }
-    else
-    {
-        qDebug () << "Keine Treffer:" << text;
+    } else {
+        qDebug() << "Keine Treffer:" << text;
     }
 }
 
@@ -1075,25 +1050,24 @@ void MainWindow::selectMeetingInList (
 
 //--------------------------------------------------------------------------------------------------
 
-void MainWindow::onMeetingSelected (
-    QListWidgetItem *item)
+void MainWindow::onMeetingSelected(QListWidgetItem *item)
 {
     if (!item)
-    {
         return;
-    }
 
-    QString meetingTitle = item->text ();
+    QString meetingTitle = item->text();
 
     // Modus automatisch festlegen basierend auf Bearbeitungsstatus
-    TranscriptionViewMode viewMode = m_script->isEdited () ? TranscriptionViewMode::Edited
-                                                           : TranscriptionViewMode::Original;
-    m_script->setViewMode (viewMode);
-    QString column = (viewMode == TranscriptionViewMode::Edited) ? "verarbeiteter_text"
-                                                                 : "roher_text";
+    TranscriptionViewMode viewMode = m_script->isEdited()
+                                         ? TranscriptionViewMode::Edited
+                                         : TranscriptionViewMode::Original;
+    m_script->setViewMode(viewMode);
+    QString column = (viewMode == TranscriptionViewMode::Edited)
+                         ? "verarbeiteter_text"
+                         : "roher_text";
 
     // Transkript laden
-    loadMeetingTranscription (meetingTitle, column);
+    loadMeetingTranscription(meetingTitle, column);
 }
 
 //--------------------------------------------------------------------------------------------------

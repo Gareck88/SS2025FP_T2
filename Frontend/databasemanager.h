@@ -74,7 +74,7 @@ public:
     /**
     * @brief Lädt das Transkript für ein Meeting.
     * @param meetingTitle Titel der Besprechung.
-    * @param textColumn Spalte mit dem Text (z. B. "roher_text").
+    * @param textColumn Spalte mit dem Text (z. B. "roher_text").
     * @param m_script Zeiger auf das Ziel-Transkriptionsobjekt.
     ‚*/
     void loadMeetingTranscriptions(const QString &meetingTitle,
@@ -112,6 +112,11 @@ public:
      * @return Tags als QStringList
      */
     QStringList parsePgTextArray(const QString &pgArrayString);
+
+    /**
+     * @brief Gibt die Sprecher ID zurück oder legt sie neu an, wenn keine ID gefunden wird
+     */
+    int getSpeakerId(const QString &speakerName, int meetingId, QSqlDatabase &db);
 
 
 private:
