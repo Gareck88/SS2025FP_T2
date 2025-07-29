@@ -15,8 +15,7 @@
  * @brief The DatabaseManager class kapselt die Datenbankverbindung, das Laden von Daten aus der Datenbank
  * sowie das Speichern von Daten zu der Datenbank.
  */
-class DatabaseManager : public QObject
-{
+class DatabaseManager:public QObject{
     Q_OBJECT
 public:
     /**

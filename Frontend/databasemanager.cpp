@@ -428,8 +428,7 @@ bool DatabaseManager::updateTranscription (
     updateMeeting.bindValue (":id", meetingId);
     if (!updateMeeting.exec ())
     {
-        qWarning () << "Fehler beim Aktualisieren des Meetings:"
-                    << updateMeeting.lastError ().text ();
+        qWarning () << "Fehler beim Aktualisieren des Meetings:" << updateMeeting.lastError ().text ();
         return false;
     }
 
@@ -445,8 +444,9 @@ bool DatabaseManager::updateTranscription (
         clearProcessedTextQuery.bindValue (":id", meetingId);
         if (!clearProcessedTextQuery.exec ())
         {
-            qWarning () << "Fehler beim Zurücksetzen von verarbeiteter_text:"
-                        << clearProcessedTextQuery.lastError ().text ();
+            qWarning ()
+                << "Fehler beim Zurücksetzen von verarbeiteter_text:"
+                << clearProcessedTextQuery.lastError ().text ();
             return false;
         }
     }
@@ -512,8 +512,9 @@ bool DatabaseManager::updateTranscription (
             updateSpeaker.bindValue (":id", speakerId);
             if (!updateSpeaker.exec ())
             {
-                qWarning () << "Fehler beim Aktualisieren des Sprechers:"
-                            << updateSpeaker.lastError ().text ();
+                qWarning ()
+                    << "Fehler beim Aktualisieren des Sprechers:"
+                    << updateSpeaker.lastError ().text ();
             }
         }
         else if (!speakerName.isEmpty ())
@@ -534,8 +535,9 @@ bool DatabaseManager::updateTranscription (
             }
             else
             {
-                qWarning () << "Sprecher konnte nicht hinzugefügt werden:"
-                            << insertSpeaker.lastError ().text ();
+                qWarning ()
+                    << "Sprecher konnte nicht hinzugefügt werden:"
+                    << insertSpeaker.lastError ().text ();
             }
         }
 

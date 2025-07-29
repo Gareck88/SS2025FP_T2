@@ -134,20 +134,6 @@ private slots:
      * @brief Öffnet einen Dateidialog, um das Transkript unter einem neuen Namen in der Datenbank zu speichern. */
     void saveTranscription ();
 
-    /**
-    * @author Yolanda Fiska
-    * @brief Holt oder erstellt die Sprecher-ID anhand des Namens.
-    *
-    * Diese Methode prüft, ob bereits ein Eintrag mit dem angegebenen Namen in der Tabelle "sprecher" existiert.
-    * Falls ja, wird die vorhandene ID zurückgegeben.
-    * Falls kein Eintrag existiert, wird ein neuer Sprecher mit dem gegebenen Namen eingefügt,
-    * und dessen automatisch generierte ID zurückgegeben.
-    *
-    * @param name Der Name des Sprechers, der gesucht oder eingefügt werden soll.
-    * @param db   Die aktive Datenbankverbindung.
-    * @return Die ID des Sprechers oder -1, falls der Vorgang fehlschlägt.
-    */
-    int getOrInsertSpeakerId (const QString &name, QSqlDatabase &db);
 
     /**
      * @brief Öffnet einen Dateidialog, um ein Transkript im JSON-Format zu laden.
@@ -169,9 +155,8 @@ private slots:
     void saveTranscriptionToJsonAs ();
 
     /**
+     * @author Yolanda Fiska
      * @brief Setzt das aktuelle Transkript auf die ursprünglich generierte Version zurück.
-     * @todo Lädt aktuell das `_original.json`-File. Zukünftig soll dies den
-     * Originalzustand des Transkripts aus der **Datenbank** wiederherstellen.
      */
     void restoreOriginalTranscription ();
 
@@ -253,7 +238,7 @@ private:
 
     //  Menü-Aktionen
     QAction *m_actionOpen;
-    QAction *m_actionSave;
+    QAction *m_actionSaveToDBAs;
     QAction *m_actionSaveAs;
     QAction *m_actionSaveToDB;
     QAction *m_actionRestoreOriginal;

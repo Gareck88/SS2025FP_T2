@@ -278,9 +278,9 @@ void MainWindow::setupUI ()
 
     //  Datei-Menüeinträge erstellen und den Member-Variablen zuweisen
     m_actionOpen = new QAction (tr ("Transkript aus Json laden..."), this);
-    //m_actionSave = new QAction (tr ("Transkript speichern"), this);
     m_actionSaveAs = new QAction (tr ("Transkript speichern unter..."), this);
     m_actionSaveToDB = new QAction (tr ("Transkript in Datenbank speichern"), this);
+    m_actionSaveToDBAs = new QAction (tr ("Neues Transkript in Datenbank..."), this);
     m_actionRestoreOriginal = new QAction (tr ("Original wiederherstellen"), this);
     m_actionClose = new QAction (tr ("Beenden"), this);
     m_actionSetMeetingName = new QAction (tr ("Meetingname setzen..."), this);
@@ -295,10 +295,10 @@ void MainWindow::setupUI ()
 
     //  Aktionen dem "Datei"-Menü hinzufügen
     menuDatei->addAction (m_actionOpen);
-    //menuDatei->addAction (m_actionSave);
     menuDatei->addAction (m_actionSaveAs);
     menuDatei->addSeparator ();
     menuDatei->addAction (m_actionSaveToDB);
+    menuDatei->addAction (m_actionSaveToDBAs);
     menuDatei->addSeparator ();
     menuDatei->addAction (m_actionRestoreOriginal);
     menuDatei->addSeparator ();
@@ -350,8 +350,8 @@ void MainWindow::doConnects ()
 
     //  Menü "Datei"
     connect (m_actionOpen, &QAction::triggered, this, &MainWindow::loadTranscriptionFromJson);
-    //connect (m_actionSave, &QAction::triggered, this, &MainWindow::saveTranscriptionToJson);
     connect (m_actionSaveAs, &QAction::triggered, this, &MainWindow::saveTranscriptionToJsonAs);
+    connect (m_actionSaveToDBAs, &QAction::triggered, this, &MainWindow::saveTranscription);
     connect (m_actionSaveToDB,
              &QAction::triggered,
              this,
@@ -490,23 +490,18 @@ void MainWindow::loadMeetings ()
 {
     //  Leert die aktuelle Liste in der UI.
     meetingList->clear ();
-    // Attempt to connect to the database
-    if (!m_databaseManager->connectToSupabase ())
-    {
-        QMessageBox::critical (this, "Database Error", "❌ Could not connect to Supabase.");
-        return;
-    }
 
-    //  Beauftragt den FileManager, alle existierenden Meeting-Dateien zu finden.
+    // Alle Besprechungen aus der Datenbank laden und in den Map speichern
     m_transcriptions = m_databaseManager->loadAllTranscriptions ();
 
-    if (m_transcriptions.isEmpty ())
+    QStringList allData = m_transcriptions.keys ();
+    if (allData.isEmpty ())
     {
-        meetingList->addItem ("⚠️ Keine Besprechungen gefunden");
+        meetingList->addItem ("Keine Besprechungen gefunden");
         return;
     }
-    //  Fügt die gefundenen Meeting-IDs der Liste in der UI hinzu.
-    meetingList->addItems (m_transcriptions.keys ());
+    //  Fügt die gefundenen Besprechungsnamen der Liste in der UI hinzu.
+    meetingList->addItems (allData);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -534,6 +529,7 @@ void MainWindow::updateUiForCurrentMeeting ()
         toggleButton->setVisible (true);
         nameLabel->setText (currentName ());
         timeLabel->setText (m_script->getDurationAsString ());
+        updateTranscriptStatusAnzeige (m_script->getViewMode ());
     }
     else
     {
@@ -722,156 +718,21 @@ void MainWindow::onRedo ()
 
 void MainWindow::updateTranscriptionInDatabase ()
 {
-    QSqlDatabase db = QSqlDatabase::database ("supabase");
-    if (!db.isOpen ())
+    if (m_databaseManager->updateTranscription (m_script))
     {
-        qWarning () << "❌ Datenbank nicht verbunden";
-        return;
+        QMessageBox::information (this, "Erfolg", "Transkript aktualisiert.");
     }
-
-    QString name = m_script->name ();
-    QDateTime startTime = m_script->dateTime ();
-
-    // Schritt 1: Meeting-ID abrufen
-    QSqlQuery lookupQuery (db);
-    lookupQuery.prepare ("SELECT id FROM besprechungen WHERE titel = :titel");
-    lookupQuery.bindValue (":titel", name);
-
-    if (!lookupQuery.exec () || !lookupQuery.next ())
+    else
     {
-        saveTranscription ();
-        return;
+        QMessageBox::warning (this, "Fehler", "Transkript konnte nicht aktualisiert werden.");
     }
-
-    int meetingId = lookupQuery.value (0).toInt ();
-
-    // Schritt 2: Metadaten der Besprechung aktualisieren
-    QSqlQuery updateMeeting (db);
-    updateMeeting.prepare ("UPDATE besprechungen SET created_at = :created_at WHERE id = :id");
-    updateMeeting.bindValue (":created_at", startTime);
-    updateMeeting.bindValue (":id", meetingId);
-    if (!updateMeeting.exec ())
-    {
-        qWarning ()
-            << "❌ Fehler beim Aktualisieren des Meetings:"
-            << updateMeeting.lastError ().text ();
-        return;
-    }
-
-    // Schritt 3: Alte Aussagen für diese Besprechung löschen
-    QSqlQuery deleteQuery (db);
-    deleteQuery.prepare ("DELETE FROM aussagen WHERE besprechungen_id = :id");
-    deleteQuery.bindValue (":id", meetingId);
-    if (!deleteQuery.exec ())
-    {
-        qWarning () << "❌ Fehler beim Löschen alter Aussagen:" << deleteQuery.lastError ().text ();
-        return;
-    }
-
-    // Schritt 4: Vorhandene Sprechernamen und IDs laden
-    QMap<QString, int> speakerCache;
-    QSqlQuery speakerLoad (db);
-    if (speakerLoad.exec ("SELECT id, name FROM sprecher"))
-    {
-        while (speakerLoad.next ())
-        {
-            int id = speakerLoad.value ("id").toInt ();
-            QString name = speakerLoad.value ("name").toString ();
-            speakerCache[name] = id;
-        }
-    }
-
-    // Schritt 5: Aktualisierte Anweisungen erneut einfügen
-    QSqlQuery insertQuery (db);
-    QString targetColumn = m_script->isEdited () ? "verarbeiteter_text" : "roher_text";
-
-    insertQuery.prepare (QString (R"(
-        INSERT INTO aussagen (
-            besprechungen_id,
-            zeit_start,
-            zeit_ende,
-            %1,
-            sprecher_id
-        ) VALUES (
-            :besprechungen_id,
-            :zeit_start,
-            :zeit_ende,
-            :text,
-            :sprecher_id
-        )
-    )")
-                             .arg (targetColumn));
-
-    for (const MetaText &segment : m_script->getMetaTexts ())
-    {
-        QString speakerName = segment.Speaker.trimmed ();
-        int speakerId = -1;
-
-        // Vorhandenen Sprechernamen aktualisieren oder neuen einfügen
-        if (speakerCache.contains (speakerName))
-        {
-            speakerId = speakerCache[speakerName];
-        }
-        else if (!speakerName.isEmpty ())
-        {
-            // Try to insert new speaker
-            QSqlQuery insertSpeaker (db);
-            insertSpeaker.prepare (
-                R"(INSERT INTO sprecher (name, besprechungen_id) VALUES (:name, :besprechungen_id) RETURNING id)");
-            insertSpeaker.bindValue (":name", speakerName);
-            insertSpeaker.bindValue (":besprechungen_id", meetingId);
-            if (insertSpeaker.exec () && insertSpeaker.next ())
-            {
-                speakerId = insertSpeaker.value (0).toInt ();
-                speakerCache[speakerName] = speakerId;
-            }
-            else
-            {
-                qWarning ()
-                    << "Sprecher konnte nicht hinzugefügt werden:"
-                    << insertSpeaker.lastError ().text ();
-            }
-        }
-
-        QDateTime start = QDateTime::fromSecsSinceEpoch (segment.Start.toLongLong ());
-        QDateTime end = QDateTime::fromSecsSinceEpoch (segment.End.toLongLong ());
-
-        insertQuery.bindValue (":besprechungen_id", meetingId);
-        insertQuery.bindValue (":zeit_start", start);
-        insertQuery.bindValue (":zeit_ende", end);
-        insertQuery.bindValue (":text", segment.Text);
-        if (speakerId != -1)
-        {
-            insertQuery.bindValue (":sprecher_id", speakerId);
-        }
-        else
-        {
-            insertQuery.bindValue (":sprecher_id", QVariant ());
-        }
-
-        if (!insertQuery.exec ())
-        {
-            qWarning () << "INSERT fehlgeschlagen:" << insertQuery.lastError ().text ();
-        }
-    }
-
-    QMessageBox::information (this, tr ("Erfolg"), tr ("Transkript erfolgreich aktualisiert."));
 }
 
 //--------------------------------------------------------------------------------------------------
 
 void MainWindow::saveTranscription ()
 {
-    QSqlDatabase db = QSqlDatabase::database ("supabase");
-    if (!db.isOpen ())
-    {
-        qWarning () << "Datenbank ist nicht geöffnet!";
-        return;
-    }
-
-    QString newTitle = QInputDialog::getText (this,
-                                              tr ("Neuer Titel"),
-                                              tr ("Geben Sie einen neuen Meeting-Titel ein:"));
+    QString newTitle = QInputDialog::getText (this, tr ("Neuer Titel"), tr ("Meeting-Titel:"));
     if (newTitle.trimmed ().isEmpty ())
     {
         return;
@@ -883,36 +744,9 @@ void MainWindow::saveTranscription ()
         return;
     }
 
-    m_script->setName (newTitle);
     meetingList->addItem (newTitle);
     m_transcriptions[newTitle] = m_script;
-
-    QMessageBox::information (this, tr ("Gespeichert"), tr ("Neues Transkript gespeichert."));
-}
-
-//--------------------------------------------------------------------------------------------------
-
-int MainWindow::getOrInsertSpeakerId (
-    const QString &name, QSqlDatabase &db)
-{
-    QSqlQuery query (db);
-    query.prepare ("SELECT id FROM sprecher WHERE name = :name");
-    query.bindValue (":name", name);
-
-    if (query.exec () && query.next ())
-    {
-        return query.value (0).toInt ();
-    }
-
-    QSqlQuery insert (db);
-    insert.prepare ("INSERT INTO sprecher (name) VALUES (:name) RETURNING id");
-    insert.bindValue (":name", name);
-    if (insert.exec () && insert.next ())
-    {
-        return insert.value (0).toInt ();
-    }
-
-    return -1;
+    QMessageBox::information (this, "Gespeichert", "Transkript gespeichert.");
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -965,7 +799,7 @@ void MainWindow::loadTranscriptionFromJson ()
 /*
 void MainWindow::saveTranscriptionToJson ()
 {
-    //  ToDo: speichern, falls Pfad vorhanden, ansonsten saveTranscriptionToJsonAs
+    //  evtl. ToDo: speichern, falls Pfad vorhanden, ansonsten saveTranscriptionToJsonAs
     return;
 }
 */
@@ -1008,99 +842,10 @@ void MainWindow::loadMeetingTranscription (
     const QString &meetingTitle, const QString &textColumn)
 {
     // Transkript aus der Datenbank laden
-    QSqlDatabase db = QSqlDatabase::database ("supabase");
-    if (!db.isOpen ())
-    {
-        qWarning () << "Supabase-Datenbank ist nicht geöffnet!";
-        return;
-    }
-
-    QSqlQuery query (db);
-    query.prepare ("SELECT id, created_at FROM besprechungen WHERE titel = :titel");
-    query.bindValue (":titel", meetingTitle);
-
-    if (!query.exec () || !query.next ())
-    {
-        QMessageBox::warning (this, tr ("Fehler"), tr ("Meeting konnte nicht gefunden werden."));
-        return;
-    }
-
-    int meetingId = query.value ("id").toInt ();
-    QDateTime startTime = query.value ("created_at").toDateTime ();
-
-    m_script->clear ();
-    m_script->setName (meetingTitle);
-    m_script->setDateTime (startTime);
-
-    QSqlQuery stmtQuery (db);
-    stmtQuery.prepare (QString (R"(
-        SELECT id, zeit_start, zeit_ende, %1, sprecher_id
-        FROM aussagen
-        WHERE besprechungen_id = :id
-        ORDER BY zeit_start
-    )")
-                           .arg (textColumn));
-    stmtQuery.bindValue (":id", meetingId);
-
-    if (!stmtQuery.exec ())
-    {
-        QMessageBox::warning (this, tr ("Fehler"), tr ("Aussagen konnten nicht geladen werden."));
-        return;
-    }
-    // Flag to check whether any valid text was found
-    bool hasText = false;
-    while (stmtQuery.next ())
-    {
-        QString text = stmtQuery.value (textColumn).toString ();
-        if (!text.isEmpty ())
-        {
-            hasText = true;
-        }
-
-        QDateTime start = stmtQuery.value ("zeit_start").toDateTime ();
-        QDateTime end = stmtQuery.value ("zeit_ende").toDateTime ();
-        int speakerId = stmtQuery.value ("sprecher_id").toInt ();
-
-        QString speakerName;
-        QSqlQuery speakerQuery (db);
-        speakerQuery.prepare (R"(
-            SELECT name FROM sprecher
-            WHERE id = :id AND besprechungen_id = :besprechungen_id
-        )");
-        speakerQuery.bindValue (":id", speakerId);
-        speakerQuery.bindValue (":besprechungen_id", meetingId);
-
-        if (speakerQuery.exec () && speakerQuery.next ())
-        {
-            speakerName = speakerQuery.value (0).toString ();
-        }
-        else
-        {
-            speakerName = tr ("Unbekannt");
-        }
-
-        QString startSec = QString::number (start.toSecsSinceEpoch ());
-        QString endSec = QString::number (end.toSecsSinceEpoch ());
-
-        MetaText segment (startSec, endSec, speakerName, text);
-        m_script->add (segment);
-    }
-    // Handle fallback after loop
-    if (!hasText && textColumn == "verarbeiteter_text")
-    {
-        qWarning () << "⚠️ Kein bearbeiteter Text gefunden, lade Original.";
-        loadMeetingTranscription (meetingTitle, "roher_text");
-        return;
-    }
-
-    //  Setzt den Undo/Redo-Verlauf zurück, da wir einen neuen Ausgangszustand haben.
-    m_undoStack.clear ();
-    m_redoStack.clear ();
-    m_undoStack.push (m_script->toJson ());
-    updateUndoRedoState ();
+    m_databaseManager->loadMeetingTranscriptions (meetingTitle, textColumn, m_script);
+    // UI aktualisieren
     updateUiForCurrentMeeting ();
 }
-
 //--------------------------------------------------------------------------------------------------
 
 void MainWindow::updateUndoRedoState ()
@@ -1189,38 +934,26 @@ void MainWindow::onReinstallPython ()
 
 void MainWindow::toggleTranscriptionVersion ()
 {
-    if (!meetingList->currentItem ())
+    // Sicherstellen, dass ein Meeting und ein Transkript vorhanden ist
+    if (!meetingList->currentItem () || !m_script)
     {
         return;
     }
 
     QString meetingTitle = meetingList->currentItem ()->text ();
+    TranscriptionViewMode currentMode = m_script->getViewMode ();
+    // Anzeigemodus umschalten
+    TranscriptionViewMode newMode = (currentMode == TranscriptionViewMode::Original)
+                                        ? TranscriptionViewMode::Edited
+                                        : TranscriptionViewMode::Original;
 
-    // Umschalten zwischen Original und Bearbeitet
-    TranscriptionViewMode newMode;
-    QString labelText, column, color;
-
-    if (m_script->getViewMode () == TranscriptionViewMode::Original)
-    {
-        newMode = TranscriptionViewMode::Edited;
-        labelText = "Anzeige: Bearbeitetes Transkript";
-        column = "verarbeiteter_text";
-        color = "orange";
-    }
-    else
-    {
-        newMode = TranscriptionViewMode::Original;
-        labelText = "Anzeige: Originales Transkript";
-        column = "roher_text";
-        color = "green";
-    }
-
-    // Modus setzen
+    // Neue Modus setzen
     m_script->setViewMode (newMode);
-    transkriptStatusLabel->setText (labelText);
-    transkriptStatusLabel->setStyleSheet ("font-weight: bold; color: " + color + ";");
-
-    // Transkript laden mit Fallback bei leeren bearbeiteten Inhalten
+    // Spaltenname für SQL-Zugriff bestimmen (je nach Modus)
+    QString column = (newMode == TranscriptionViewMode::Edited) ? "verarbeiteter_text"
+                                                                : "roher_text";
+    // Status im UI aktualisieren und Transkript neu laden
+    updateTranscriptStatusAnzeige (newMode);
     loadMeetingTranscription (meetingTitle, column);
 }
 
@@ -1293,11 +1026,11 @@ void MainWindow::highlightMatchedText (
     QTextCharFormat highlightFormat;
 
     //  Nutze Systemfarben anstatt selbst definierte
-    //highlightFormat.setBackground (QColor (0x44, 0x44, 0xFF)); // hell blau
-    //highlightFormat.setForeground (Qt::white);
     auto pal = QApplication::palette ();
     highlightFormat.setBackground (pal.accent ());
     highlightFormat.setForeground (pal.highlightedText ());
+    // highlightFormat.setBackground (QColor ("#4444FF")); // hell blau
+    // highlightFormat.setForeground (Qt::white);
 
     bool found = false;
     // Alle Vorkommen des Texts markieren
@@ -1355,12 +1088,11 @@ void MainWindow::onMeetingSelected (
     // Modus automatisch festlegen basierend auf Bearbeitungsstatus
     TranscriptionViewMode viewMode = m_script->isEdited () ? TranscriptionViewMode::Edited
                                                            : TranscriptionViewMode::Original;
-
     m_script->setViewMode (viewMode);
-
     QString column = (viewMode == TranscriptionViewMode::Edited) ? "verarbeiteter_text"
                                                                  : "roher_text";
 
+    // Transkript laden
     loadMeetingTranscription (meetingTitle, column);
 }
 

@@ -179,7 +179,8 @@ private:
     // Meeting-Metadaten
     QString m_meetingName; ///< Der Name des Meetings.
     QDateTime m_startTime; ///< Das Startdatum und die -uhrzeit des Meetings.
-    TranscriptionViewMode viewMode = TranscriptionViewMode::Edited; // Standardmäßig Bearbeitet anzeigen
+    TranscriptionViewMode viewMode
+        = TranscriptionViewMode::Original; // Standardmäßig Original anzeigen
 };
 
 #endif // TRANSCRIPTION_H
