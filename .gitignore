@@ -1,0 +1,8 @@
+*.user
+build/*
+*/build/*
+latex/*
+*/latex/*
+html/*
+*/html/*
+Frontend/python/python_path.txt

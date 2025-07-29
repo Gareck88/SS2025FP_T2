@@ -1,0 +1,7 @@
+numpy
+git+https://github.com/openai/whisper.git
+pyannote-audio
+torch
+torchaudio
+onnxruntime
+spacy
