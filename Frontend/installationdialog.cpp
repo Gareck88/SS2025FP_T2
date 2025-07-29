@@ -3,7 +3,6 @@
 #include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QPushButton>
-#include <QSettings>
 #include <QTextEdit>
 #include <QTimer>
 

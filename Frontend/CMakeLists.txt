@@ -10,9 +10,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network Concurrent)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent)
+find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets Network Concurrent Sql)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent Sql)
 
+# Findet die PostgreSQL-Bibliothek (sollte für Win, Linux & Mac funktionieren)
+find_package(PostgreSQL REQUIRED)
 
 set(LINUX_SOURCES
     pulsecapturethread.h
@@ -58,7 +60,12 @@ set(PROJECT_SOURCES
     installationdialog.cpp
     pythonenvironmentmanager.h
     pythonenvironmentmanager.cpp
+    databasemanager.h
+    databasemanager.cpp
+    searchdialog.h
+    searchdialog.cpp
 )
+
 
 if(WIN32)
     qt_add_executable(AudioTranskriptor
@@ -77,14 +84,30 @@ elseif(UNIX AND NOT APPLE)
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
         ${LINUX_SOURCES}
-
     )
 elseif(APPLE)
+    # Use Homebrew's PostgreSQL@14 path
+    set(LIBPQ_ROOT "/opt/homebrew/lib/postgresql@14")
+
     qt_add_executable(AudioTranskriptor
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
         ${MAC_SOURCES}
+        databasemanager.h databasemanager.cpp
+
+        searchdialog.h
+        searchdialog.cpp
+        multisearchdialog.h
+        multisearchdialog.cpp
     )
+
+    # Include libpq headers if needed (adjust if headers are elsewhere)
+    # include_directories("/opt/homebrew/include")
+
+    # Link the libpq library
+    # target_link_directories(AudioTranskriptor PRIVATE ${LIBPQ_ROOT})
+    # target_link_libraries(AudioTranskriptor PRIVATE pq)
+
 endif()
 
 
@@ -99,12 +122,15 @@ add_custom_command(
     COMMENT "Kopiere python/ nach ${PYTHON_DST_DIR}"
 )
 
-
 target_link_libraries(AudioTranskriptor PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::Concurrent
+    Qt${QT_VERSION_MAJOR}::Sql
 )
+
+# Verlinkt die PostgreSQL-Bibliothek
+target_link_libraries(AudioTranskriptor PRIVATE PostgreSQL::PostgreSQL)
 
 if(WIN32)
     target_link_libraries(AudioTranskriptor PRIVATE

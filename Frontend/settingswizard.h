@@ -15,6 +15,7 @@ class QLabel;
 class QDoubleSpinBox;
 class QSpinBox;
 class QFontComboBox;
+class QScrollArea;
 
 /**
  * @brief Ein Dialogfenster zur Bearbeitung der Anwendungseinstellungen.
@@ -66,7 +67,6 @@ private:
     QLineEdit *scriptEdit; ///< Eingabefeld für den ASR-Skript-Pfad.
     QLineEdit *wavEdit;    ///< Eingabefeld für den Wav-Datei-Pfad.
     QLineEdit *asrWavEdit; ///< Eingabefeld für den ASR-Wav-Datei-Pfad.
-    QLineEdit *meetingEdit; ///< Eingabefeld für den Meetings-Pfad.
     QSlider *bufferSlider; ///< Slider zur Einstellung der Audio-Puffergröße.
     QLabel *durationLabel; ///< Label zur Anzeige der Pufferdauer in Sekunden.
 
@@ -85,6 +85,18 @@ private:
     QSpinBox *marginBottomSpin;     ///< SpinBox für den unteren Seitenrand des PDFs.
     QSpinBox *marginLeftSpin;       ///< SpinBox für den linken Seitenrand des PDFs.
     QFontComboBox *fontFamilyCombo; ///< Auswahlbox für die PDF-Schriftfamilie.
+
+    // Datenbank-Einstellungen
+    QLineEdit *dbHostEdit; ///< Eingabefeld für den Hostname.
+    QSpinBox  *dbPortSpin; ///< Eingabefeld für den Port.
+    QLineEdit *dbNameEdit; ///< Eingabefeld für den Datenbankname.
+    QLineEdit *dbUserEdit; ///< Eingabefeld für den Benutzername.
+    QLineEdit *dbPassEdit; ///< Eingabefeld für den Password.
+
+    // Layout
+    QScrollArea *scroll;
+    QWidget content;
+
 };
 
 #endif // SETTINGSWIZARD_H

@@ -14,15 +14,12 @@ fi
 source "$ENV_NAME/bin/activate"
 
 echo "⬆️  Aktualisiere pip..."
-pip install --upgrade pip --break-system-packages
-
-pip install 
-https://github.com/kpu/kenlm/archive/master.zip
+python -m pip install --upgrade pip
 
 # 3. Anforderungen installieren
 if [ -f python/requirements.txt ]; then
     echo "📥 Installiere Anforderungen aus requirements.txt..."
-    pip install -r python/requirements.txt --break-system-packages
+    pip install -r python/requirements.txt
 else
     echo "⚠️  Keine requirements.txt gefunden!"
 fi

@@ -204,9 +204,6 @@ void WavWriterThread::writeCurrentBufferToDisk (
     //  um beim nächsten Chunk an der richtigen Position weiterzumachen.
     m_downsampleOffset = (frames + m_downsampleOffset) % 3;
 
-    emit audioBytesReady(mono);
-
-
     m_asrFile.write (mono);
     m_asrBytesWritten += mono.size ();
     buffer.clear ();

@@ -23,7 +23,6 @@ SettingsWizard::SettingsWizard (
     , scriptEdit (new QLineEdit (this))
     , wavEdit (new QLineEdit (this))
     , asrWavEdit (new QLineEdit (this))
-    , meetingEdit (new QLineEdit (this))
     , bufferSlider (new QSlider (Qt::Horizontal, this))
     , durationLabel (new QLabel (this))
     , sysGainSpin (new QDoubleSpinBox (this))
@@ -38,12 +37,16 @@ SettingsWizard::SettingsWizard (
     , marginBottomSpin (new QSpinBox (this))
     , marginLeftSpin (new QSpinBox (this))
     , fontFamilyCombo (new QFontComboBox (this))
+    , dbHostEdit (new QLineEdit (this))
+    , dbPortSpin (new QSpinBox (this))
+    , dbNameEdit (new QLineEdit (this))
+    , dbUserEdit (new QLineEdit (this))
+    , dbPassEdit (new QLineEdit (this))
 {
     QPushButton *browsePython = new QPushButton (tr ("..."));
     QPushButton *browseScript = new QPushButton (tr ("..."));
     QPushButton *browseWav = new QPushButton (tr ("..."));
     QPushButton *browseAsrWav = new QPushButton (tr ("..."));
-    QPushButton *browseMeetings = new QPushButton (tr ("..."));
     QPushButton *okButton = new QPushButton (tr ("Speichern"));
 
     //  Konfiguriert alle Einstellungs-Widgets mit ihren Wertebereichen und Einheiten.
@@ -66,28 +69,48 @@ SettingsWizard::SettingsWizard (
     //  Lade alle Werte aus den QSettings und setze sie als aktuelle Werte der Widgets.
     //  Falls ein Schlüssel nicht existiert, wird der angegebene Standardwert verwendet.
     QSettings settings ("SS2025FP_T2", "AudioTranskriptor");
-    pdfHeadlineSpin->setValue (settings.value ("pdf/fontSizeHeadline", 42).toInt ());
-    pdfBodySpin->setValue (settings.value ("pdf/fontSizeBody", 12).toInt ());
-    pdfMetaSpin->setValue (settings.value ("pdf/fontSizeMeta", 10).toInt ());
+
+    settings.beginGroup ("PDF");
+    pdfHeadlineSpin->setValue (settings.value ("fontSizeHeadline", 42).toInt ());
+    pdfBodySpin->setValue (settings.value ("fontSizeBody", 12).toInt ());
+    pdfMetaSpin->setValue (settings.value ("fontSizeMeta", 10).toInt ());
     fontFamilyCombo->setCurrentFont (
-        QFont (settings.value ("pdf/fontFamily", "sans-serif").toString ()));
-    marginTopSpin->setValue (settings.value ("pdf/marginTop", 25).toInt ());
-    marginRightSpin->setValue (settings.value ("pdf/marginRight", 25).toInt ());
-    marginBottomSpin->setValue (settings.value ("pdf/marginBottom", 25).toInt ());
-    marginLeftSpin->setValue (settings.value ("pdf/marginLeft", 25).toInt ());
+        QFont (settings.value ("fontFamily", "sans-serif").toString ()));
+    marginTopSpin->setValue (settings.value ("marginTop", 25).toInt ());
+    marginRightSpin->setValue (settings.value ("marginRight", 25).toInt ());
+    marginBottomSpin->setValue (settings.value ("marginBottom", 25).toInt ());
+    marginLeftSpin->setValue (settings.value ("marginLeft", 25).toInt ());
+    settings.endGroup ();
+
     pythonEdit->setText (settings.value ("pythonPath").toString ());
     scriptEdit->setText (settings.value ("scriptPath").toString ());
+    dbHostEdit->setText(settings.value("db/host", "localhost").toString());
+    dbPortSpin->setRange(1, 65535);
+    dbPortSpin->setValue(settings.value("db/port", 5432).toInt());
+    dbNameEdit->setText(settings.value("db/name", "postgres").toString());
+    dbUserEdit->setText(settings.value("db/user", "postgres").toString());
+    dbPassEdit->setEchoMode(QLineEdit::Password);
+    dbPassEdit->setText(settings.value("db/password", "").toString());
+
+
+    settings.beginGroup ("Database");
+    dbHostEdit->setText (settings.value ("host", "localhost").toString ());
+    dbPortSpin->setRange (1, 65535);
+    dbPortSpin->setValue (settings.value ("port", 5432).toInt ());
+    dbNameEdit->setText (settings.value ("name", "postgres").toString ());
+    dbUserEdit->setText (settings.value ("user", "").toString ());
+    dbPassEdit->setEchoMode (QLineEdit::Password);
+    dbPassEdit->setText (settings.value ("password", "").toString ());
+    settings.endGroup ();
 
     //  Lade Standard-Pfade
     QString initWavPath, initAsrWavPath, initMeetingsPath;
     FileManager fm (this);
     initWavPath = fm.getTempWavPath (false);
     initAsrWavPath = fm.getTempWavPath (true);
-    initMeetingsPath = fm.getMeetingsDirectory ();
 
     wavEdit->setText (initWavPath);
     asrWavEdit->setText (initAsrWavPath);
-    meetingEdit->setText (initMeetingsPath);
 
     // --- Verbinde alle "Browse"-Buttons mit den entsprechenden Datei- oder Ordnerdialogen ---
     connect (browsePython,
@@ -141,23 +164,6 @@ SettingsWizard::SettingsWizard (
                  if (!path.isEmpty ())
                  {
                      asrWavEdit->setText (path);
-                 }
-             });
-
-    connect (browseMeetings,
-             &QPushButton::clicked,
-             this,
-             [=]
-             {
-                 QString path
-                     = QFileDialog::getExistingDirectory (this,
-                                                          tr ("Ordner für die Meetings auswählen"),
-                                                          initMeetingsPath,
-                                                          QFileDialog::ShowDirsOnly
-                                                              | QFileDialog::DontResolveSymlinks);
-                 if (!path.isEmpty ())
-                 {
-                     meetingEdit->setText (path);
                  }
              });
 
@@ -216,10 +222,18 @@ SettingsWizard::SettingsWizard (
     pathLayout->addRow ("", browseWav);
     pathLayout->addRow (tr ("ASR-Wav-Dateipfad:"), asrWavEdit);
     pathLayout->addRow ("", browseAsrWav);
-    pathLayout->addRow (tr ("Meetings-Ordner:"), meetingEdit);
-    pathLayout->addRow ("", browseMeetings);
     pathGroup->setLayout (pathLayout);
     form->addRow (pathGroup);
+
+    QGroupBox *dbGroup = new QGroupBox (tr ("Datenbankverbindung (Supabase)"));
+    QFormLayout *dbLayout = new QFormLayout ();
+    dbLayout->addRow (tr ("Host:"), dbHostEdit);
+    dbLayout->addRow (tr ("Port:"), dbPortSpin);
+    dbLayout->addRow (tr ("Datenbankname:"), dbNameEdit);
+    dbLayout->addRow (tr ("Benutzer:"), dbUserEdit);
+    dbLayout->addRow (tr ("Passwort:"), dbPassEdit);
+    dbGroup->setLayout (dbLayout);
+    form->addRow (dbGroup);
 
     QGroupBox *audioGroup = new QGroupBox (tr ("Audio-Einstellungen"));
     QFormLayout *audioLayout = new QFormLayout ();
@@ -349,18 +363,30 @@ void SettingsWizard::saveSettings ()
     settings.setValue ("scriptPath", scriptEdit->text ());
     settings.setValue ("wavPath", wavEdit->text ());
     settings.setValue ("asrWavPath", asrWavEdit->text ());
-    settings.setValue ("meetingPath", meetingEdit->text ());
     settings.setValue ("audio/bufferThreshold", validateBufferSize (bufferSlider->value ()));
     settings.setValue ("sysGain", sysGainSpin->value ());
     settings.setValue ("micGain", micGainSpin->value ());
-    settings.setValue ("pdf/fontSizeHeadline", pdfHeadlineSpin->value ());
-    settings.setValue ("pdf/fontSizeBody", pdfBodySpin->value ());
-    settings.setValue ("pdf/fontSizeMeta", pdfMetaSpin->value ());
-    settings.setValue ("pdf/fontFamily", fontFamilyCombo->currentFont ().family ());
-    settings.setValue ("pdf/marginTop", marginTopSpin->value ());
-    settings.setValue ("pdf/marginRight", marginRightSpin->value ());
-    settings.setValue ("pdf/marginBottom", marginBottomSpin->value ());
-    settings.setValue ("pdf/marginLeft", marginLeftSpin->value ());
+
+    //  PDF-Einstellungen
+    settings.beginGroup ("PDF");
+    settings.setValue ("fontSizeHeadline", pdfHeadlineSpin->value ());
+    settings.setValue ("fontSizeBody", pdfBodySpin->value ());
+    settings.setValue ("fontSizeMeta", pdfMetaSpin->value ());
+    settings.setValue ("fontFamily", fontFamilyCombo->currentFont ().family ());
+    settings.setValue ("marginTop", marginTopSpin->value ());
+    settings.setValue ("marginRight", marginRightSpin->value ());
+    settings.setValue ("marginBottom", marginBottomSpin->value ());
+    settings.setValue ("marginLeft", marginLeftSpin->value ());
+    settings.endGroup ();
+
+    //  Datenbank-Einstellungen
+    settings.beginGroup ("Database");
+    settings.setValue ("host", dbHostEdit->text ());
+    settings.setValue ("port", dbPortSpin->value ());
+    settings.setValue ("name", dbNameEdit->text ());
+    settings.setValue ("user", dbUserEdit->text ());
+    settings.setValue ("password", dbPassEdit->text ());
+    settings.endGroup ();
 
     accept (); //  Schließt den Dialog mit dem "Accepted"-Status.
 }

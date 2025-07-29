@@ -21,8 +21,10 @@ PythonEnvironmentManager::PythonEnvironmentManager (
 bool PythonEnvironmentManager::checkAndSetup (
     bool forceReinstall, QWidget *parentWidget)
 {
-    QSettings settings ("SS2025FP_T2", "AudioTranskriptor");
-    QString pythonPath = settings.value ("pythonPath").toString ();
+    QSettings settings (QSettings::NativeFormat, QSettings::UserScope,
+        "SS2025FP_T2", "AudioTranskriptor");
+    QString pythonPath = settings.value ("pythonPath").toString();
+    settings.sync();
 
     //  Wenn eine Neuinstallation nicht erzwungen wird und der Pfad gültig ist, sind wir fertig.
     if (!forceReinstall && QFile::exists (pythonPath))

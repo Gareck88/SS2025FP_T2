@@ -77,7 +77,6 @@ signals:
      */
     void finishedWriting ();
 
-    void audioBytesReady(QByteArray byteArrayChunk);
 protected:
     /**
      * @brief Die Hauptfunktion des Threads (der "Consumer"-Teil).

@@ -10,8 +10,6 @@ FileManager::FileManager (
     QObject *parent)
     : QObject (parent)
 {
-    //  Stellt sicher, dass das Hauptverzeichnis für Meetings beim Start existiert.
-    getMeetingsDirectory ();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -36,7 +34,7 @@ QString FileManager::getTempWavPath (
 }
 
 //--------------------------------------------------------------------------------------------------
-
+/*
 QString FileManager::getMeetingsDirectory () const
 {
     //  Der Speicherort für die gespeicherten Meetings ist betriebssystemabhängig.
@@ -58,7 +56,6 @@ QString FileManager::getMeetingsDirectory () const
     }
     return path;
 }
-
 //--------------------------------------------------------------------------------------------------
 
 QString FileManager::getMeetingJsonPath (
@@ -86,6 +83,7 @@ QStringList FileManager::findExistingMeetings () const
     }
     return meetingIds;
 }
+*/
 
 //--------------------------------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 /**
  * @file mainwindow.h
  * @brief Enthält die Deklaration der MainWindow-Klasse, dem Hauptfenster der Anwendung.
- * @author Mike Wild
+ * @author Mike Wild + Yolanda Fiska
  */
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -10,7 +10,9 @@
 #include <QJsonDocument>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QSqlDatabase>
 #include <QStack>
+#include <QSqlDatabase>
 
 // Eigene Klassen
 #include "asrprocessmanager.h"
@@ -18,9 +20,12 @@
 #include "transcription.h"
 
 // Forward-Deklarationen
+class Databasemanager;
 class TagGeneratorManager;
 class SpeakerEditorDialog;
 class TextEditorDialog;
+class SearchDialog;
+class MultiSearchDialog;
 class WavWriterThread;
 class CaptureThread;
 class SettingsWizard;
@@ -36,6 +41,9 @@ class QSplitter;
 class QTextEdit;
 class QTimer;
 class QVBoxLayout;
+class DatabaseManager;
+class SearchDialog;
+
 
 /**
  * @brief Das Hauptfenster und die zentrale Steuerungseinheit der Anwendung.
@@ -51,13 +59,11 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow (QWidget *parent = nullptr);
     ~MainWindow () override;
-
+       
 protected:
     /**
      * @brief Wird aufgerufen, wenn der Benutzer versucht, das Fenster zu schließen.
      * @param event Das Close-Event, das ggf. ignoriert werden kann, um das Schließen zu verhindern.
-     * @todo Die Logik zum Speichern bei ungesicherten Änderungen soll zukünftig ebenfalls
-     * die **Datenbank-Speicherfunktion** aufrufen.
      */
     void closeEvent (QCloseEvent *event) override;
 
@@ -88,15 +94,19 @@ private slots:
     void onGenerateTags ();
 
     /**
+     * @author Yolanda Fiska
      * @brief Lädt das ausgewählte Meeting aus der Liste bei einem Doppelklick.
      * @param item Das angeklickte Listenelement, dessen Text die Meeting-ID enthält.
-     * @todo Die Methode verwendet derzeit den FileManager, um eine JSON-Datei zu laden.
-     * Dies soll durch eine **Datenbankabfrage** ersetzt werden, die das Meeting anhand seiner ID lädt.
      */
     void onMeetingSelected (QListWidgetItem *item);
 
     /** @brief Filtert die Meeting-Liste basierend auf der Eingabe im Suchfeld. */
     void onSearchTextChanged (const QString &text);
+
+    /**
+     * @author Yolanda Fiska
+     * @brief Öffnet einen Dialog zur gezielten Suche nach Inhalten oder Diskussionen. */
+    void onSearchButtonClicked ();
 
     /** @brief Startet den ASR-Prozess für die zuletzt aufgenommene Audiodatei. */
     void processAudio ();
@@ -117,32 +127,49 @@ private slots:
     void onRedo ();
 
     /**
+     * @author Yolanda Fiska
+     * @brief Aktualisiert das aktuelle Transkript. */
+    void updateTranscriptionInDatabase ();
+
+    /**
+     * @author Yolanda Fiska
+     * @brief Öffnet einen Dateidialog, um das Transkript unter einem neuen Namen in der Datenbank zu speichern. */
+    void saveTranscription ();
+
+    /**
+    * @author Yolanda Fiska
+    * @brief Holt oder erstellt die Sprecher-ID anhand des Namens.
+    *
+    * Diese Methode prüft, ob bereits ein Eintrag mit dem angegebenen Namen in der Tabelle "sprecher" existiert.
+    * Falls ja, wird die vorhandene ID zurückgegeben.
+    * Falls kein Eintrag existiert, wird ein neuer Sprecher mit dem gegebenen Namen eingefügt,
+    * und dessen automatisch generierte ID zurückgegeben.
+    *
+    * @param name Der Name des Sprechers, der gesucht oder eingefügt werden soll.
+    * @param db   Die aktive Datenbankverbindung.
+    * @return Die ID des Sprechers oder -1, falls der Vorgang fehlschlägt.
+    */
+    int getOrInsertSpeakerId (const QString &name, QSqlDatabase &db);
+
+    /**
      * @brief Öffnet einen Dateidialog, um ein Transkript im JSON-Format zu laden.
-     * @todo Diese Funktion zum Laden einer beliebigen Datei bleibt bestehen, aber die primäre
-     * Ladefunktion wird der Datenbankzugriff über onMeetingSelected().
      */
     void loadTranscriptionFromJson ();
 
-    /**
-     * @brief Speichert das aktuell bearbeitete Transkript.
-     * @todo Ersetzt aktuell die zugehörige JSON-Datei. Dies soll in Zukunft
-     * einen 'UPDATE'-Befehl an die **Datenbank** senden, um den bestehenden Eintrag zu aktualisieren.
-     */
-    void saveTranscriptionToJson ();
+    /** @brief Aktualisiert das aktuelle Transkript. */
+    void updateTranscriptionInDatabase ();
+
+    /** @brief Öffnet einen Dateidialog, um das Transkript unter einem neuen Namen in der Datenbank zu speichern. */
+    void saveTranscription ();
 
     /**
-     * @brief Öffnet einen Dateidialog, um das Transkript unter einem neuen Namen zu speichern.
-     * @todo Statt als neue Datei zu speichern, soll dies zukünftig einen
-     * 'INSERT'-Befehl an die **Datenbank** senden, um einen neuen Eintrag zu erzeugen.
-     */
-    void saveTranscriptionToJsonAs ();
-
-    /**
-     * @brief Setzt das aktuelle Transkript auf die ursprünglich generierte Version zurück.
-     * @todo Lädt aktuell das `_original.json`-File. Zukünftig soll dies den
-     * Originalzustand des Transkripts aus der **Datenbank** wiederherstellen.
+     * @brief Stellt Originalzustand des Transkripts aus der Datenbank wiederherstellen.
      */
     void restoreOriginalTranscription ();
+
+    /** @author Yolanda Fiska
+     *  @brief Ladt das Transkript aus der Datenbank. */
+    void loadMeetingTranscription (const QString &meetingTitle, const QString &textColumn);
 
     /** @brief Aktualisiert den Zustand der Undo/Redo-Buttons. */
     void updateUndoRedoState ();
@@ -159,12 +186,26 @@ private slots:
    */
     void onReinstallPython ();
 
-    // NEUER SLOT: Behandelt das backendReady-Signal vom ASR-Backend
-    void handleBackendReady ();
-    // NEUER SLOT: Behandelt empfangene Transkriptionen vom ASR-Backend
-    void handleTranscriptionReady(const QString &speaker, const QString &text);
-    // NEUER SLOT: Behandelt Fehlermeldungen vom ASR-Backend
-    void handleBackendError(const QString &message);
+    /**
+    * @brief Wechselt zwischen der Anzeige des originalen und bearbeiteten Transkripts.
+    *
+    * Diese Methode ermittelt den aktuellen Anzeigemodus des Transkripts (original oder bearbeitet),
+    * schaltet zum jeweils anderen Modus um, aktualisiert die Benutzeroberfläche entsprechend
+    * und lädt die passende Transkript-Version.
+    */
+    void toggleTranscriptionVersion();
+
+    /** @brief Öffnet einen Dialog zur gezielten Suche nach Inhalten oder Diskussionen in allen Transkripten. */
+    void openMultiSearchDialog();
+
+    /** @brief Aktualisiert die Statusanzeige für den aktuell dargestellten Transkriptmodus. */
+    void updateTranscriptStatusAnzeige(TranscriptionViewMode newMode);
+
+    /** @brief gefundenen Text markieren */
+    void highlightMatchedText(const QString &text);
+
+    /** @brief Wählr eine Besprechung aus der gefundene Liste in der Such-Dialogsfenster aus. */
+    void selectMeetingInList(const QString &meetingName);
 
 private:
     /** @brief Erstellt und arrangiert alle UI-Widgets. */
@@ -174,9 +215,7 @@ private:
     void doConnects ();
 
     /**
-     * @brief Lädt die Liste der verfügbaren Meetings in die Seitenleiste.
-     * @todo Aktuell wird das Dateisystem durchsucht. Zukünftig soll diese Methode
-     * eine **Datenbankabfrage** ausführen, um alle gespeicherten Meetings abzurufen.
+     * @brief Lädt die Liste der verfügbaren Meetingsnamen aus der Datenbank in die Seitenleiste.
      */
     void loadMeetings ();
 
@@ -185,7 +224,6 @@ private:
 
     /** @brief Wendet einen Filter auf die sichtbaren Elemente der Meeting-Liste an. */
     void filterMeetings (const QString &filter);
-
 
     /** @brief Konstruiert den Anzeige-Namen für das aktuelle Meeting aus Name und Datum. */
     QString currentName () const;
@@ -200,6 +238,7 @@ private:
     QAction *m_actionOpen;
     QAction *m_actionSave;
     QAction *m_actionSaveAs;
+    QAction *m_actionSaveToDB;
     QAction *m_actionRestoreOriginal;
     QAction *m_actionClose;
     QAction *m_actionSetMeetingName;
@@ -213,6 +252,7 @@ private:
     FileManager *m_fileManager;          ///< Manager für alle Dateizugriffe.
     AsrProcessManager *m_asrManager;     ///< Manager für den ASR-Python-Prozess.
     TagGeneratorManager *m_tagGenerator; ///< Manager für den Tag-Generator-Python-Prozess.
+    DatabaseManager *m_databaseManager;  ///< Manager für den Datenbank
 
     // UI-Widgets
     QSplitter *splitter;
@@ -229,9 +269,13 @@ private:
     QPushButton *assignNamesButton;
     QPushButton *generateTagsButton;
     QPushButton *editTextButton;
+    QPushButton *searchButton;
+    QPushButton *multiSearchButton;
+    QPushButton *toggleButton;
     QLabel *timeLabel;
     QLabel *nameLabel;
     QLabel *statusLabel;
+    QLabel *transkriptStatusLabel;
     QTextEdit *transcriptView;
     QTimer *pollTimer;
     QTimer *timeUpdateTimer;
@@ -239,13 +283,15 @@ private:
     QElapsedTimer elapsedTime;
     SpeakerEditorDialog *m_speakerEditorDialog;
     TextEditorDialog *m_textEditorDialog;
+    SearchDialog *m_searchDialog;
+    MultiSearchDialog *m_multiSearchDialog;
 
     // Zustandsvariablen
     QString m_currentAudioPath;   ///< Pfad zur zuletzt gespeicherten Audiodatei.
     QString m_currentMeetingName; ///< Name des aktuellen Meetings (wird bei Aufnahme/Laden gesetzt).
     QString m_currentMeetingDateTime; ///< Zeitstempel des aktuellen Meetings.
 
-    QProcess *pluginProcess; ///< Platzhalter für einen möglichen IPC-Prozess.
+    QProcess *pluginProcess; ///< Platzhalter für einen möglichen IPC-Prozess. 
 };
 
 #endif // MAINWINDOW_H

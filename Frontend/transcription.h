@@ -55,6 +55,23 @@ struct MetaText
     }
 };
 
+// Definiert den aktuellen Anzeigemodus des Transkripts
+enum class TranscriptionViewMode {
+    Original,
+    Edited
+};
+
+/**
+ * @author Yolanda Fiska
+ * @class TranscriptionViewMode
+ * @brief Definiert den aktuellen Anzeigemodus des Transkripts
+ */
+enum class TranscriptionViewMode
+{
+    Original,
+    Edited
+};
+
 /**
  * @class Transcription
  * @brief Das zentrale Datenmodell für ein komplettes Meeting-Transkript.
@@ -107,6 +124,13 @@ public:
     QDateTime dateTime () const { return m_startTime; }
     QString getDurationAsString () const;
 
+    bool isEdited () const { return m_changed; }
+    void setEdited (
+        bool value)
+    {
+        m_changed = value;
+    }
+
     // --- Tag-Management ---
     QStringList tags () const { return m_tags; }
     void setTags (const QStringList &tags);
@@ -115,6 +139,8 @@ public:
     bool hasTag (const QString &tag) const;
     QList<MetaText> segmentsWithTag (const QString &tag) const;
 
+    /** @brief vergleicht die Inhalt von zwei Transkriptionen. */
+    bool isContentEqual(const Transcription* other) const;
 public slots:
     /** @brief Fügt ein neues Textsegment zum Transkript hinzu. */
     void add (const MetaText &part);
@@ -133,6 +159,14 @@ public slots:
 
     /** @brief Setzt das Startdatum und die Uhrzeit des Meetings. */
     void setDateTime (QDateTime dateTime);
+
+    /** @author Yolanda Fiska
+     *  @brief Setzt den aktuellen Anzeigemodus (Original oder Bearbeitet). */
+    void setViewMode (TranscriptionViewMode mode);
+
+    /** @author Yolanda Fiska
+     *  @brief Gibt den aktuellen Anzeigemodus zurück*/
+    TranscriptionViewMode getViewMode () const;
 
 signals:
     /** @brief Wird bei jeder sichtbaren Änderung der Daten gesendet. Dient der UI-Aktualisierung. */
@@ -153,10 +187,12 @@ private:
     int m_batchUpdateCounter{0}; ///< Zähler für verschachtelte Batch-Updates.
     bool m_changesPending
         = false; ///< Flag, das merkt, ob während eines Batch-Updates Änderungen aufgetreten sind.
+    bool m_changed; ///< Flag, das merkt, ob der transkribierte Text verarbeitet wurde.
 
     // Meeting-Metadaten
     QString m_meetingName; ///< Der Name des Meetings.
     QDateTime m_startTime; ///< Das Startdatum und die -uhrzeit des Meetings.
+    TranscriptionViewMode viewMode = TranscriptionViewMode::Edited; // Standardmäßig Bearbeitet anzeigen
 };
 
 #endif // TRANSCRIPTION_H
