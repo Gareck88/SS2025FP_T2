@@ -1,0 +1,169 @@
+\chapter{Audioaufnahme unter MacOS}
+\label{chap:audio_mac}
+\authormargin{Pakize Gökkaya}
+
+Die digitale Audioverarbeitung hat in den letzten Jahren eine immer größere Bedeutung erlangt, sowohl im professionellen als auch im privaten Umfeld. Anwendungen reichen von Musikproduktion, Podcast-Aufnahme, Videokonferenzen bis hin zu Sprachsteuerungssystemen und Machine-Learning-gestützter Audioanalyse.
+Für die plattformübergreifende Softwareentwicklung stellt insbesondere die Audioaufnahme eine technische Herausforderung dar, da sich die zugrunde liegenden Audio-APIs und Treiberarchitekturen zwischen Betriebssystemen wie Windows, macOS und Linux erheblich unterscheiden.
+
+Im Rahmen dieser Arbeit wurde die Klasse MacCaptureThread entwickelt, um unter macOS eine stabile, latenzarme und verlustfreie Audioaufnahme zu ermöglichen. Diese Implementierung basiert auf Qt – einem plattformübergreifenden Framework – und nutzt die Klasse QAudioSource zur Erfassung von Audiodaten in Echtzeit.
+Besonderes Augenmerk wird auf die Integration des virtuellen Audiotreibers BlackHole gelegt, der als Schnittstelle dient, um Systemaudio direkt abzugreifen, ohne physische Mikrofone oder externe Geräte zu verwenden.
+
+
+\section{Einführung in die Audioarchitektur von macOS}
+\authormargin{Pakize Gökkaya}
+
+Die Audioverarbeitung unter macOS unterscheidet sich grundlegend von derjenigen unter Windows oder Linux. Apple setzt seit vielen Jahren auf das sogenannte Core Audio Framework, das eine hochperformante, hardware-nahe Schnittstelle für die Ein- und Ausgabe von Audiosignalen bereitstellt. Core Audio ist vollständig in das Betriebssystem integriert und bietet niedrige Latenzen sowie eine präzise Steuerung von Audioströmen. Im Gegensatz zu Windows, wo die Audioarchitektur durch mehrere parallele APIs wie WASAPI, DirectSound oder ASIO geprägt ist, und Linux, das in der Praxis meist auf PulseAudio oder ALSA setzt, verfolgt macOS einen stark zentralisierten Ansatz.
+
+Eine Besonderheit von macOS besteht darin, dass Systemaudio, also die Gesamtausgabe aller Anwendungen, aus Datenschutz- und Sicherheitsgründen nicht direkt abgegriffen werden kann. Apple verhindert so, dass Programme ohne Wissen der Nutzer Audioinhalte mitschneiden. Aus diesem Grund ist für die Aufnahme von Systemaudio zwingend die Verwendung sogenannter virtueller Audiotreiber notwendig. Diese Treiber stellen dem Betriebssystem ein „virtuelles Audiogerät“ bereit, über das Audio von einer Anwendung zur anderen geleitet werden kann. Genau hier kommt in der Praxis das Open-Source-Werkzeug BlackHole zum Einsatz.
+
+
+%
+% Section: Listen
+%
+\section{Technischer Hintergrund}
+\label{sec:chapter03:listen}
+\authormargin{Pakize Gökkaya}
+
+\begin{enumerate}
+ \item Audio-APIs unter macOS \\\\
+ macOS bietet mit Core Audio eine leistungsfähige, aber komplexe Low-Level-API, die direkten Zugriff auf die Audiohardware ermöglicht.
+Die direkte Programmierung gegen Core Audio ist jedoch für plattformübergreifende Anwendungen aufwendig. Aus diesem Grund verwendet MacCaptureThread die Qt-eigene Abstraktion QAudioSource, die intern Core Audio anspricht, aber eine einheitliche Schnittstelle für Windows, macOS und Linux bereitstellt. \cite{appleCoreAudio}
+
+ \item QAudioSource und QIODevice \\\\
+ Die Klasse QAudioSource ist darauf ausgelegt, kontinuierlich Audiodaten von einer Eingangsquelle zu erfassen. Die Ausgabe erfolgt in ein QIODevice, das entweder synchron (durch blockierendes Lesen) oder asynchron (mittels readyRead-Signal) ausgelesen werden kann.
+Der Ansatz in MacCaptureThread verwendet asynchrones Lesen, um eine konstante, latenzarme Verarbeitung zu gewährleisten und UI-Blockaden zu vermeiden. \cite{qtQAudioSource}
+
+ 
+ \item Signal-Slot-Mechanismus in Qt \\\\
+ Das Zusammenspiel zwischen QAudioSource und der Anwendung erfolgt über den Signal-Slot-Mechanismus von Qt. Immer wenn neue Audiodaten verfügbar sind, löst das QIODevice ein readyRead-Signal aus. Dieses wird mit einer Lambda-Funktion verbunden, die die Daten sofort ausliest, in einem internen Puffer (audioBuffer) speichert und über das Signal audioDataReady an andere Teile der Anwendung weitergibt.
+\cite{qtQAudioSource}
+
+\end{enumerate}
+
+\section{Implementierung von MacCaptureThread}
+\authormargin{Pakize Gökkaya}
+
+Die Implementierung der Klasse \texttt{MacCaptureThread} stellt eine spezialisierte Lösung zur Audioaufnahme unter macOS dar. Sie basiert auf der von uns definierten generischen Basisklasse \texttt{CaptureThread}, die eine plattformunabhängige Schnittstelle zur Verfügung stellt und von der verschiedene Betriebssystem-spezifische Ableitungen erstellt werden können. 
+Die macOS-Variante unterscheidet sich dabei in mehrfacher Hinsicht von Windows- oder Linux-Implementierungen, da sie auf die Eigenheiten des Apple-Frameworks \textit{Core Audio} sowie auf die Qt-Multimedia-Schnittstelle (\texttt{QAudioSource}) zurückgreift.
+
+Im Folgenden werden die wesentlichen Schritte der Implementierung erläutert und durch zusätzliche technische Hintergründe ergänzt.
+
+\subsection{Initialisierung der Audioaufnahme}
+Die Methode \texttt{initializeCapture()} übernimmt die Konfiguration und Inbetriebnahme der Audioquelle. Dabei werden mehrere Schritte durchlaufen:
+\begin{enumerate}
+    \item \textbf{Instanziierung von QAudioSource}:  
+    Zunächst wird ein Objekt vom Typ \texttt{QAudioSource} erzeugt, dem ein zuvor spezifiziertes Audioformat übergeben wird. Zu den typischen Parametern gehören die Abtastrate (z. B. 44{,}1 kHz oder 48 kHz), die Anzahl der Kanäle (Mono, Stereo oder Mehrkanal) sowie das Sample-Format (z. B. 16-bit Integer). Diese Parameter sind für die Kompatibilität mit nachgelagerten Verarbeitungsschritten entscheidend.
+    
+    \item \textbf{Öffnen des Eingabegeräts}:  
+    Anschließend wird ein Eingabegerät (\texttt{QIODevice}) über die \texttt{QAudioSource} geöffnet. Dieses Eingabegerät repräsentiert den kontinuierlichen Datenstrom der Audiodaten, der von Hardware oder virtuellen Treibern wie „BlackHole“ bereitgestellt wird.
+    
+    \item \textbf{Signal-Slot-Mechanismus mit Lambda-Funktion}:  
+    Das Signal \texttt{readyRead()} des Eingabegeräts wird mit einer Lambda-Funktion verknüpft. Diese Lambda-Funktion liest die aktuell verfügbaren Audiodaten aus und speichert sie in einem internen Puffer. Dieser Ansatz vermeidet Polling-Mechanismen und sorgt für eine asynchrone, ressourcenschonende Verarbeitung. Die Verwendung von Lambdas bietet zudem eine enge Kapselung und vermeidet die Notwendigkeit zusätzlicher Hilfsmethoden.
+\end{enumerate}
+Die Initialisierung stellt damit sicher, dass unmittelbar nach dem Start des Threads ein funktionierender und kontinuierlicher Datenfluss gewährleistet ist.
+
+\subsection{Kontinuierliche Aufnahme}
+Die Methode \texttt{captureLoopIteration()} übernimmt die eigentliche Verarbeitungsschleife. Im Unterschied zu klassischen Implementierungen, die auf einer aktiven Schleife basieren, delegiert \texttt{QAudioSource} die Steuerung des Datenflusses an das Betriebssystem.  
+Neue Iterationen erfolgen ausschließlich dann, wenn tatsächlich Audiodaten im Eingabepuffer vorliegen. Dadurch sinkt die CPU-Last erheblich, was insbesondere bei Echtzeitanwendungen relevant ist. Zusätzlich trägt dieses Verfahren zu einem deterministischeren Timing bei, da die Aufnahme nicht von manuell gesetzten Sleep- oder Polling-Intervallen abhängt, sondern direkt durch Hardware-Events getriggert wird.  
+
+Ein weiterer Vorteil dieser Architektur besteht in der einfachen Integration in Qt’s Event-Loop, wodurch die Aufnahme nahtlos mit anderen GUI- oder Netzwerk-Operationen koexistieren kann.
+
+\subsection{Pufferverwaltung und Datenzugriff}
+Die aufgezeichneten Daten werden in einem internen \texttt{QByteArray}-Puffer (\texttt{audioBuffer}) zwischengespeichert. Über die Methode \texttt{getBuffer()} kann auf diesen Puffer zugegriffen werden. Dies erlaubt eine klare Trennung zwischen der Erfassungsschicht (Capture) und der Verarbeitungsschicht (z. B. Speicherung, Streaming oder Analyse).  
+Ein typisches Anwendungsbeispiel wäre die direkte Übergabe des Puffers an eine Fourier-Transformation zur Frequenzanalyse, an einen Netzwerk-Stack für Live-Streaming oder an eine Datei-Engine zur persistenten Speicherung im WAV- oder MP3-Format.
+
+Das Signal \texttt{audioDataReady()} informiert verbundene Komponenten unmittelbar über neue Daten. Dies entspricht dem „Observer Pattern“ und erleichtert die lose Kopplung verschiedener Systemkomponenten.
+
+\subsection{Ressourcenmanagement und Bereinigung}
+Die Methode \texttt{cleanupCapture()} ist verantwortlich für die Freigabe sämtlicher Ressourcen. Hierbei wird sichergestellt, dass sowohl die \texttt{QAudioSource} als auch das zugehörige Eingabegerät korrekt geschlossen werden. Dies verhindert Speicherlecks und blockierte Hardwaregeräte.  
+Besondere Bedeutung hat dies im Fehlerfall oder beim kontrollierten Abbruch einer Aufnahme. Ein sauberer Shutdown ist Voraussetzung dafür, dass die Audiohardware unmittelbar für weitere Prozesse zur Verfügung steht.
+
+\subsection{Besonderheiten unter macOS}
+Die Implementierung unter macOS unterscheidet sich von anderen Plattformen durch die Abhängigkeit von \textit{Core Audio}, das von Qt abstrahiert wird. Während unter Windows oftmals \textit{WASAPI} oder \textit{DirectSound} verwendet werden, setzt Linux auf Treiberarchitekturen wie ALSA oder PulseAudio.  
+Unter macOS kommt hinzu, dass virtuelle Audiogeräte wie \textit{BlackHole} oder \textit{Soundflower} benötigt werden, um Systemaudio überhaupt aufzuzeichnen. Diese Treiber simulieren ein Eingabegerät, das den Systemton als Datenstrom bereitstellt.  
+Besonders relevant ist hierbei die Unterscheidung zwischen „BlackHole 2ch“ und „BlackHole 16ch“: Erstere bietet lediglich zwei Kanäle (Stereo), während letztere bis zu 16 Kanäle parallel abbilden kann. Die Wahl des Treibers beeinflusst daher maßgeblich die Flexibilität bei Mehrkanalanwendungen, etwa für Audio-Engineering oder Live-Mischungen.
+
+
+\section{Verwendung von BlackHole als Audioquelle}
+\authormargin{Pakize Gökkaya}
+
+Ein zentrales Element der Implementierung ist die Verwendung von BlackHole, einem virtuellen Audio-Treiber für macOS.
+BlackHole ermöglicht es, den Systemton (alles, was über die Lautsprecher ausgegeben würde) als Eingangssignal abzugreifen.
+Die Gründe für den Einsatz von BlackHole statt anderer Lösungen wie Soundflower oder Loopback sind: \\\\
+
+\begin{itemize}
+ \item Aktive Weiterentwicklung und Kompatibilität mit aktuellen macOS-Versionen (inkl. Apple Silicon).
+\item Geringe Latenz durch native Core-Audio-Integration.
+\item Unterstützung für Mehrkanalbetrieb (2-Kanal- und 16-Kanal-Versionen verfügbar).
+\item Kostenlos und Open Source.  
+\cite{blackhole}
+\end{itemize}
+
+\label{sec:chapter03:listen}
+Unterschiede zwischen 2-Kanal- und 16-Kanal-Variante
+
+\begin{itemize}
+\item 2-Kanal-Version: Für Standard-Stereoaufnahmen geeignet; geringerer Ressourcenverbrauch; einfachere Weiterverarbeitung.
+
+\item 16-Kanal-Version: Erlaubt paralleles Capturing von mehreren unabhängigen Audioströmen; ideal für komplexe Setups in Musikproduktion oder Live-Mischungen.
+\end{itemize}
+
+ In MacCaptureThread kann je nach Anwendungsfall das gewünschte virtuelle Gerät als Eingangsquelle ausgewählt werden.
+
+
+
+\section{Vergleich zu Windows-Implementierungen}
+\authormargin{Pakize Gökkaya}
+
+Unter Windows wird Audio-Capturing in Qt häufig über QAudioInput realisiert, das wiederum auf WASAPI (Windows Audio Session API) oder MME (MultiMedia Extensions) aufsetzt.
+Die wesentlichen Unterschiede zu macOS sind: \\\\
+
+\begin{itemize}
+\item Gerätemanagement: 
+Windows erlaubt explizite Auswahl des „Loopback“-Modus für WASAPI, um Systemaudio direkt zu erfassen. Unter macOS ist dies ohne virtuelle Treiber wie BlackHole nicht möglich.
+\item Latenzverhalten: 
+Core Audio unter macOS bietet in der Regel geringere Latenzen als WASAPI, wenn beide optimal konfiguriert sind.
+\item Treiberabhängigkeit: 
+Während Windows-Systeme oft mit Onboard-Audio und Loopback-Support arbeiten, muss macOS ohne BlackHole auf externe Hardware zurückgreifen, um Systemaudio zu erfassen.
+\cite{pohlmann2011}
+
+\end{itemize}
+
+
+\section{Herausforderungen und Lösungsansätze}
+\authormargin{Pakize Gökkaya}
+
+Die Implementierung von MacCaptureThread war mit mehreren Herausforderungen verbunden:
+
+\begin{enumerate}
+ \item Geräteauswahl in QAudioSource
+ \begin{itemize}
+ \item Herausforderung: BlackHole muss gezielt aus der Liste verfügbarer Eingabegeräte ausgewählt werden.
+\item  Lösung: Abfrage aller verfügbaren Eingabegeräte und explizite Auswahl des BlackHole-Devices per QMediaDevices.
+
+\end{itemize}
+
+\item Thread-Sicherheit
+
+\begin{itemize}
+
+\item Herausforderung: Gleichzeitiger Zugriff auf den audioBuffer kann zu Race Conditions führen.
+\item  Lösung: Puffern der Daten in QByteArray mit Mutex-Schutz, um Race Conditions beim Lesen und Schreiben zu vermeiden.
+\end{itemize}
+ 
+ \item Ressourcenfreigabe
+\begin{itemize}
+\item Herausforderung: Abbrüche oder Exceptions können zu nicht freigegebenen Ressourcen führen.
+\item Lösung: Sicherstellen, dass cleanupCapture() auch bei Exceptions oder erzwungenem Thread-Abbruch ausgeführt wird.
+\end{itemize}
+ 
+ \end{enumerate}
+
+
+\subsection{Fazit}
+\authormargin{Pakize Gökkaya}
+
+Die Klasse \texttt{MacCaptureThread} stellt eine robuste und erweiterbare Lösung dar, um Audioaufnahmen unter macOS zu realisieren. Durch die Kombination von \texttt{QAudioSource}, \texttt{QIODevice} und Qt’s Signal-Slot-Mechanismus wird eine asynchrone, latenzarme und ressourcenschonende Aufnahme ermöglicht.  
+Im Vergleich zu Windows oder Linux erfordert macOS zusätzliche virtuelle Treiber, was die Implementierung komplexer macht. Gleichzeitig bietet der Ansatz aber auch eine hohe Flexibilität und eine klare Trennung zwischen Erfassung, Pufferung und Weiterverarbeitung. Damit eignet sich \texttt{MacCaptureThread} sowohl für einfache Stereoaufnahmen als auch für komplexe Mehrkanalszenarien.
+
+

@@ -1,0 +1,89 @@
+\chapter{Evaluation}
+\authormargin{Yolanda Hadiana Fiska}
+
+In diesem Kapitel wird das entwickelte Spracherkennungssystem im Hinblick auf die
+Aufgabenstellung bewertet. Ziel war es, Meetings und Konferenzen automatisch zu
+transkribieren, die Inhalte in Echtzeit verfügbar zu machen, Sprecher zu identifizieren,
+Dialoge zu kennzeichnen und die Transkripte in einer durchsuchbaren Datenbank abzulegen. 
+Zur Evaluation wurden zwei unterschiedliche Ansätze betrachtet: Zum einen das
+eigene KI-Modell, das für die Echtzeitverarbeitung ausgelegt ist, und zum anderen ein
+Referenzsystem bestehend aus Whisper und pyannote, das Audio nachträglich verarbeitet. 
+Zusätzlich wurde spaCy zur Generierung von Tags für die Dialogstruktur eingesetzt, 
+während die Volltextsuche in PostgreSQL mit \texttt{tsvector}-Indizes realisiert wurde.
+
+\section{Echtzeitfähige Transkription mit dem eigenen KI-Modell}
+\authormargin{Yolanda Hadiana Fiska}
+
+Das eigens entwickelte Modell dient der direkten, live-fähigen Transkription von Meetings. 
+Es verarbeitet Audio in kurzen 1-Sekunden-Chunks und wandelt diese sofort in Text um, 
+wodurch Nutzer unmittelbar auf die Inhalte zugreifen können. Dank des integrierten 
+Language Models werden Rechtschreibung und Grammatik weitgehend korrekt umgesetzt, 
+was die Lesbarkeit der Transkripte deutlich verbessert. Gleichzeitig treten jedoch 
+bei komplexeren Fachbegriffen, Eigennamen oder Abkürzungen gelegentlich Fehler auf. 
+Manchmal werden Wörter generiert, die im Original nicht gesprochen wurden, was die 
+semantische Genauigkeit einschränkt.  
+
+Die Sprecherdiarisierung arbeitet auf Segmentbasis, indem jeweils drei aufeinanderfolgende 
+Chunks zu 3-Sekunden-Blöcken zusammengefasst werden. Dadurch entstehen minimale 
+Verzögerungen, die jedoch im Kontext von Echtzeit-Meetings noch akzeptabel sind. Insgesamt
+ermöglicht das Modell eine unmittelbare Verfügbarkeit der Transkripte, was insbesondere 
+für die Dokumentation und die Nachverfolgung von Meetings einen deutlichen Vorteil darstellt.
+
+\section{Nachbearbeitung mit Whisper und pyannote}
+\authormargin{Yolanda Hadiana Fiska}
+
+Als Vergleichssystem wurde Whisper in Kombination mit pyannote eingesetzt. 
+Dieses Skript verarbeitet Audio zunächst offline, indem es WAV-Dateien entgegennimmt 
+und anschließend die Transkription erstellt. Pyannote übernimmt die Sprecherdiarisierung,
+die hier sehr zuverlässig funktioniert. Da die Verarbeitung nachträglich erfolgt, ist 
+eine Echtzeitnutzung nicht möglich, dennoch liefert das System qualitativ hochwertige 
+Transkripte, die stabil gegenüber Hintergrundgeräuschen und unterschiedlichen Sprachmodi 
+sind. Die Erkennung von Fachbegriffen oder Eigennamen ist in vielen Fällen besser als 
+beim eigenen Modell, jedoch fehlt die Anpassbarkeit für spezifische deutsche Terminologie. 
+Dieses System eignet sich insbesondere für die Nachbearbeitung und Archivierung von 
+Meetings, weniger für Live-Szenarien.
+
+\section{Tagging der Dialoge mit spaCy}
+\authormargin{Yolanda Hadiana Fiska}
+
+Zusätzlich wurde spaCy genutzt, um die Transkripte semantisch aufzubereiten und 
+Tags für Dialogkennzeichen zu generieren. Dadurch können z.\,B. Fragen, Antworten 
+oder andere Dialoganteile im Nachgang leichter identifiziert werden. Die Tagging-Funktionalität
+funktioniert für einfache Begriffe zuverlässig, zeigt jedoch Schwächen bei komplexen
+oder fachlichen Termini. Auch zusammengesetzte Wörter oder Eigennamen werden nur
+teilweise korrekt erkannt. Trotz dieser Einschränkungen leistet spaCy einen wertvollen 
+Beitrag zur Strukturierung der Dialoge, wenngleich die Genauigkeit noch optimiert werden 
+muss.
+
+\section{Durchsuchbarkeit über PostgreSQL und tsvector}
+\authormargin{Yolanda Hadiana Fiska}
+
+Für die effiziente Recherche innerhalb der Transkripte werden alle Texte in einer 
+PostgreSQL-Datenbank gespeichert. Mittels \texttt{tsvector}-Indizes lässt sich eine 
+performante Volltextsuche realisieren, die durch zusätzliche Erweiterungen wie 
+\texttt{unaccent} und \texttt{pg\_trgm} fehlertolerant gestaltet ist. Tippfehler, 
+Umlautvarianten oder kleine Abweichungen werden so automatisch berücksichtigt. 
+Dies ermöglicht den Nutzern, sowohl organisationsweit als auch innerhalb einzelner 
+Meetings relevante Inhalte schnell zu finden. Die Volltextsuche bildet damit eine 
+stabile und verlässliche Grundlage für die Nachverfolgbarkeit und Analyse von 
+Meetinginhalten.
+
+\section{Gesamtbewertung}
+\authormargin{Yolanda Hadiana Fiska}
+
+In der Gesamtbetrachtung zeigt sich, dass das entwickelte System die Kernziele der
+Aufgabenstellung grundsätzlich erfüllt. Das eigene Modell ermöglicht eine direkte
+Echtzeittranskription und bietet damit einen unmittelbaren Zugriff auf die Inhalte.
+Whisper + pyannote liefert eine hochwertige Alternative für die Offline-Nachbearbeitung,
+insbesondere wenn hohe Genauigkeit und stabile Sprecherdiarisierung erforderlich sind. 
+Die Tagging-Funktionalität von spaCy unterstützt die semantische Strukturierung der 
+Transkripte, muss jedoch hinsichtlich Genauigkeit weiter optimiert werden. Die Speicherung
+in PostgreSQL mit \texttt{tsvector}-Indizes stellt eine leistungsfähige Basis für
+Volltextsuche und Analyse bereit.
+
+Zusammenfassend lässt sich sagen, dass das System funktional alle Anforderungen 
+abdeckt: Transkription, Sprechererkennung, Dialogkennzeichnung und durchsuchbare 
+Speicherung. Die Evaluation zeigt jedoch Optimierungspotenziale, insbesondere bei der 
+genaueren Erkennung von Fachbegriffen im Echtzeitmodell, der Zuverlässigkeit der Tagging-Komponente 
+und der Kombination von Echtzeit- und Nachbearbeitungsprozessen, um eine maximale 
+Flexibilität und Qualität zu gewährleisten.

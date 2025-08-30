@@ -1,0 +1,31 @@
+\chapter{Grundlagen \& Stand der Technik}
+\authormargin{Fabian Scherer}
+
+Die automatische Spracherkennung (Automatic Speech Recognition, ASR) hat sich in den letzten Jahrzehnten von regelbasierten Ansätzen hin zu datengetriebenen Methoden auf Basis neuronaler Netze entwickelt. Während klassische Systeme wie Hidden Markov Models (HMM) in Kombination mit Gaussian Mixture Models (GMM) lange Zeit den Stand der Technik darstellten, haben tiefe neuronale Netze (Deep Neural Networks, DNN) und insbesondere rekurrente sowie transformerbasierte Architekturen die Genauigkeit und Robustheit deutlich verbessert.
+
+\section{Kommerzielle Systeme}
+\authormargin{Fabian Scherer}
+
+Im praktischen Einsatz dominieren aktuell cloudbasierte Spracherkennungsdienste großer Anbieter:
+
+\begin{itemize}
+\item \textbf{Google Speech-to-Text:} Bietet eine Echtzeit-Transkription in über 125 Sprachen und Dialekten. Das System nutzt Deep-Learning-Modelle, die kontinuierlich mit neuen Sprachdaten verbessert werden (Google Cloud, 2025).
+
+\item \textbf{Microsoft Azure Speech Services:} Ermöglicht neben Transkription auch Sprechertrennung („speaker diarization“) und individuelle Anpassung durch benutzerdefinierte Sprachmodelle (Microsoft, 2025).
+
+\item \textbf{Amazon Transcribe:} Konzentriert sich auf skalierbare Echtzeit-Transkription und bietet branchenspezifische Anpassungen, z. B. für Medizin oder Kundenservice (Amazon Web Services, 2025).
+\end{itemize}
+Diese Systeme sind leistungsfähig, erfordern jedoch meist eine Internetverbindung und bergen datenschutzrechtliche Herausforderungen, da Sprachdaten an externe Server übermittelt werden.
+
+\section{Open-Source-Ansätze}
+\authormargin{Fabian Scherer}
+
+Parallel dazu haben Open-Source-Lösungen an Bedeutung gewonnen. Besonders hervorzuheben ist Whisper von OpenAI, ein auf Transformer-Architekturen basierendes Modell, das in 2022 veröffentlicht wurde. Whisper zeichnet sich durch hohe Robustheit gegenüber Hintergrundgeräuschen und Akzenten aus und unterstützt Mehrsprachigkeit sowie Übersetzung. Da es lokal betrieben werden kann, eignet es sich für Szenarien mit hohen Datenschutzanforderungen.
+
+Weitere Open-Source-Projekte wie Kaldi oder ESPnet haben sich in der Forschung etabliert und dienen als Grundlage für die Entwicklung und Evaluierung neuer Spracherkennungsalgorithmen.
+
+Herausforderungen und Trends
+
+Trotz der erheblichen Fortschritte bestehen weiterhin Herausforderungen. Dazu gehören die zuverlässige Sprechertrennung in Gruppensituationen, die Erkennung von Fachterminologie, sowie die Anpassung an individuelle Sprachgewohnheiten und Akzente. Zunehmend wird auch die Integration von selbstlernenden Systemen untersucht, die ihre Modelle durch fortlaufende Nutzung verbessern. Ein weiterer Trend ist die Echtzeit-Verarbeitung auf Edge-Geräten, die datenschutzfreundliche Lösungen ohne Cloud-Anbindung ermöglicht.
+
+Für das vorliegende Projekt bedeutet dies, dass moderne KI-gestützte ASR-Systeme als technologische Basis genutzt werden können, während die gezielte Integration in Meeting- und Konferenzkontexte – einschließlich Datenbankanbindung, QR-Code-Verteilung und selbstlernender Komponenten – eine Weiterentwicklung des aktuellen Stands darstellt.

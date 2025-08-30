@@ -6,3 +6,17 @@ latex/*
 html/*
 */html/*
 Frontend/python/python_path.txt
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.lof
+*.log
+*.lol
+*.lot
+*.out
+*.xml
+*.toc
+*blx.bib
+*.gz
+*DS_Store

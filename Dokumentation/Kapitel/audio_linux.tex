@@ -1,0 +1,111 @@
+%----------- File: Kapitel/audio_linux.tex -----------
+
+\chapter{Audioaufnahme unter Linux (PulseAudio)}
+\label{chap:audio_linux}
+\authormargin{Mike Wild}
+
+Dieses Kapitel beschreibt die plattformspezifische Audioaufnahme unter Linux mittels \emph{PulseAudio}. Andere Audio-Systeme werden derzeit nicht unterstützt. Die Klasse \texttt{PulseCaptureThread} leitet von der abstrakten Basisklasse \texttt{CaptureThread} ab und implementiert die Initialisierung, den Aufnahme-Loop sowie das Aufräumen der PulseAudio-Ressourcen. Kernidee ist die gleichzeitige Erfassung des \emph{Systemmixes} (Wiedergabegerät) und des \emph{Mikrofons}, deren Signale in 32-bit-Float gemischt, gegen Clipping begrenzt und anschließend an den \texttt{WavWriterThread} übertragen werden.
+
+
+\section{Ziele und Designentscheidungen}
+\label{sec:linux_ziele}
+\authormargin{Mike Wild}
+
+Die Linux-Implementierung verfolgt folgende Ziele:
+\begin{itemize}
+    \item \textbf{Gleichzeitige Erfassung} von System-Audio (\enquote{what-you-hear}) und Mikrofon.
+    \item \textbf{Robustheit} durch explizites Fehler-Handling beim Laden desModuls und beim Öffnen der PulseAudio-Streams.
+    \item \textbf{Einfache Parametrisierung} (z.\,B.\ Lautstärkeverhältnisse) via \texttt{QSettings}.
+    \item \textbf{Streckenweise Entkopplung} durch den \texttt{CaptureThread}-Lebenszyklus (Warteschleife $\rightarrow$ Initialisierung $\rightarrow$ Aufnahme $\rightarrow$ Cleanup).
+\end{itemize}
+
+
+\section{Architektur und Datenpfad}
+\label{sec:linux_architektur}
+\authormargin{Mike Wild}
+
+Die Initialisierung richtet zwei Aufnahmequellen ein:
+\begin{enumerate}
+    \item \textbf{Systemmix} via \texttt{\$DefaultSink.monitor}.
+    \item \textbf{Mikrofon} via \emph{virtuelle Senke}: \texttt{module-null-sink} (\enquote{MicSink}) und ein \texttt{module-loopback} vom Standard-\emph{Source} auf diese Senke; abgehört wird \texttt{mic\_sink.monitor}.
+\end{enumerate}
+
+Beide Quellen werden mit \texttt{pa\_simple\_new} als Float32LE, $48$\,kHz, Stereo geöffnet. Im Aufnahmeloop werden Blockweise $N=1024$ Frames pro Quelle gelesen, in einem Mischpuffer skaliert (\texttt{sysGain}, \texttt{micGain}) und mit \texttt{qBound} gegen Clipping begrenzt. Der gemischte Block wird als \texttt{QList<float>} per \texttt{emit pcmChunkReady(chunk)} an den \texttt{WavWriterThread} übergeben (vgl.\ Kapitel \ref{chap:wav_thread}). Anders als bei der Audioaufnahme unter Windows (siehe Abschnitt \ref{sec:wasapi_loop}), kann hier auf ein Timer verzichtet werden, da \texttt{PulseAudio} auch bei Stille Audiodaten liefert.
+
+\section{Initialisierungsschritte (\texttt{initializeCapture()})}
+\label{sec:linux_initialize}
+\authormargin{Mike Wild}
+
+\subsection*{Ablauf in Worten}
+\begin{enumerate}
+    \item \textbf{Einstellungen laden}: \texttt{sysGain}, \texttt{micGain} aus \texttt{QSettings}.
+    \item \textbf{Standardgeräte ermitteln}: \texttt{pactl info} parsen (Sprache robust: EN/DE).
+    \item \textbf{Virtuelle Module laden}: \texttt{module-null-sink} $\rightarrow$ \texttt{mic\_sink},
+    \texttt{module-loopback} (Mikrofon $\rightarrow$ \texttt{mic\_sink}).
+    \item \textbf{PulseAudio-Streams öffnen}:
+    \texttt{pa\_simple\_new} für \texttt{\$DefaultSink.monitor} (Systemmix) und \texttt{mic\_sink.monitor}.
+    \item \textbf{Puffer vorbereiten}: \texttt{bufSys}, \texttt{bufMic}, \texttt{bufMix} mit $N\times 2$ (Stereo).
+\end{enumerate}
+
+
+
+\subsection*{Auszug (Listing)}
+\begin{lstlisting}[language=C++,caption={Ermitteln der Default-Geräte und Laden der PulseAudio-Module},label={lst:pulse-modules}]
+    QProcess infoProc;
+    infoProc.start("pactl", {"info"});
+    infoProc.waitForFinished(500);
+    QString info = QString::fromUtf8(infoProc.readAllStandardOutput());
+
+    QRegularExpression reEnSink(R"(Default Sink:\s*(\S+))"),
+    reDeSink(R"(Standard-Ziel:\s*(\S+))"),
+    reEnSrc (R"(Default Source:\s*(\S+))"),
+    reDeSrc (R"(Standard-Quelle:\s*(\S+))");
+
+    QString origSink = ...; // via RegEx
+    QString origSource = ...;
+
+    auto loadModule = [&](const QString& params)->int {
+        QProcess p; p.start("pactl", QStringList{"load-module"} << params.split(' '));
+        p.waitForFinished();
+        bool ok; int id = QString::fromUtf8(p.readAllStandardOutput()).trimmed().toInt(&ok);
+        return ok ? id : -1;
+    };
+
+    m_modNull = loadModule("module-null-sink sink_name=mic_sink sink_properties=device.description=MicSink");
+    m_modLoop = loadModule(QString("module-loopback source=%1 sink=mic_sink").arg(origSource));
+\end{lstlisting}
+
+\section{Aufnahme-Loop (\texttt{captureLoopIteration()})}
+\label{sec:linux_loop}
+\authormargin{Mike Wild}
+
+\subsection*{Ablauf in Worten}
+
+In jeder Iteration werden $N=1024$ Frames pro Quelle synchron gelesen. Schlägt \texttt{pa\_simple\_read} fehl, wird die Session beendet (\texttt{stopCapture()}). War das Lesen erfolgreich, werden anschließend System- und Mikrofonsamples gewichtet addiert:
+
+\begin{equation*}
+    \mathrm{mix}[i] = \mathrm{qBound}\bigl(-1,\; \mathrm{sysGain}\cdot \mathrm{sys}[i] + \mathrm{micGain}\cdot \mathrm{mic}[i],\; 1\bigr).
+\end{equation*}
+
+Der resultierende Stereo-Block \texttt{bufMix} wird in eine \texttt{QList<float>} kopiert, als \texttt{chunk} emittiert und vom \texttt{WavWriterThread} asynchron weiterverarbeitet bzw. resamplet und ans Echtzeit-Transkriptions-Skript weitergereicht.
+
+
+\section{Aufräumen (\texttt{cleanupCapture()})}
+\label{sec:linux_cleanup}
+\authormargin{Mike Wild}
+
+Beim Beenden werden offene Restpuffer optional geleert (\enquote{drain}) und beide \texttt{pa\_simple}-Streams freigegeben. Anschließend entlädt die Implementierung die geladenen PulseAudio-Module (\texttt{module-loopback}, \texttt{module-null-sink}), um das System in den Ausgangszustand zurückzuversetzen. Dies ist insbesondere in Multi-App-Szenarien wichtig, um Seiteneffekte zu vermeiden.
+
+
+\section{Parametrisierung und Grenzfälle}
+\label{sec:linux_params}
+\authormargin{Mike Wild}
+
+\textbf{Blockgröße und Format} Die Wahl $N=1024$ Frames bei $48$\,kHz reduziert Aufruf-Overhead und hält die Latenz moderat. Float32 vermeidet Quantisierungsartefakte vor dem Downsampling im \texttt{WavWriterThread} (vgl.\ Kapitel \ref{chap:wav_thread}) und sorgt dafür, dass das Audio in hoher Qualität gespeichert werden kann.\\
+
+\textbf{Pegelsteuerung} \texttt{sysGain} und \texttt{micGain} werden zur Laufzeit aus \texttt{QSettings} gelesen und erlauben eine grobe Balance. Das \texttt{qBound}-Clipping schützt vor Übersteuerung in der Mischstufe.\\
+
+\textbf{Fehlerszenarien} Typische Fehler sind (I) fehlende Standard-Geräte in \texttt{pactl info},
+(II) fehlende Rechte zum Laden von Modulen,
+(III) konkurrierende PulseAudio-Clients.
+Alle Fälle führen zu \texttt{return false} in \texttt{initializeCapture()} nach einem gezielten \texttt{cleanupCapture()}.

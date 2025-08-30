@@ -1,0 +1,48 @@
+\chapter{Problemstellung \& Herausforderungen}
+\authormargin{Fabian Scherer}
+
+Trotz erheblicher Fortschritte im Bereich der automatischen Spracherkennung bestehen weiterhin vielfältige Herausforderungen, die auch für das vorliegende Projekt von Relevanz sind. Diese lassen sich in technologische, organisatorische und nutzerbezogene Problemstellungen gliedern.
+
+\section{1. Technologische Herausforderungen}
+\authormargin{Fabian Scherer}
+
+\subsection{Genauigkeit der Spracherkennung:}
+Die Erkennungsqualität hängt stark von Faktoren wie Akzentvielfalt, Sprechgeschwindigkeit, Dialekten oder Fachterminologie ab. Besonders in Meetings treten häufig Überlappungen mehrerer Sprecher auf, die eine fehlerfreie Transkription erschweren.
+
+\subsection{Sprechertrennung (Speaker Diarization):}
+Ein wesentliches Ziel des Projekts ist es, unterschiedliche Sprecher automatisch zu identifizieren. In realen Meeting-Situationen ist dies eine komplexe Aufgabe, insbesondere bei Hintergrundgeräuschen, parallelen Gesprächen oder wechselnder Akustik.
+
+\subsection{Echtzeit-Verarbeitung:}
+Die Transkription soll in Echtzeit erfolgen, um den Teilnehmern unmittelbar zur Verfügung zu stehen. Dies stellt hohe Anforderungen an Rechenleistung, Latenzzeiten und Optimierung der Algorithmen, insbesondere wenn keine Cloud-Dienste, sondern lokale Systeme (Edge Computing) genutzt werden sollen.
+
+\subsection{Datenspeicherung und -durchsuchbarkeit:}
+Die Speicherung der transkribierten Inhalte in einer durchsuchbaren Datenbank erfordert eine saubere Strukturierung, effiziente Indizierung sowie die Möglichkeit, semantische Suchanfragen zu unterstützen. Hierbei spielt auch die Verknüpfung mit Metadaten wie Tags oder Zeitstempeln eine zentrale Rolle.
+
+\subsection{Selbstlernende Systeme:}
+Damit das System seine Erkennungsgenauigkeit kontinuierlich verbessern kann, muss ein Mechanismus zum Nachtrainieren mit neuen Sprach- und Kontextdaten integriert werden. Dies bringt zusätzliche Anforderungen an Modellverwaltung, Versionierung und Evaluierung mit sich.
+
+\section{2. Organisatorische Herausforderungen}
+\authormargin{Fabian Scherer}
+
+\subsection{Datenschutz und Sicherheit:}
+Die Aufzeichnung und Speicherung von Meetings beinhaltet sensible Informationen. Es muss sichergestellt werden, dass sowohl die Verarbeitung als auch die Speicherung der Sprach- und Textdaten den Anforderungen der Datenschutz-Grundverordnung (DSGVO) entsprechen. Besonders kritisch ist der Einsatz von Cloud-basierten Diensten, bei denen Daten externe Server verlassen.
+
+\subsection{Integration in bestehende Workflows:}
+Das System soll Mehrwert schaffen, ohne den Arbeitsablauf zu verkomplizieren. Eine einfache Bereitstellung der Protokolle (z. B. via QR-Code) ist daher erforderlich. 
+
+\section{3. Nutzerbezogene Herausforderungen}
+\authormargin{Fabian Scherer}
+
+\subsection{Akzeptanz bei den Anwendern:}
+Die Einführung eines KI-gestützten Transkriptionssystems kann bei Nutzern Bedenken hinsichtlich Überwachung, Fehlinterpretation oder zusätzlicher Komplexität hervorrufen. Eine intuitive Bedienung und transparente Funktionsweise sind daher entscheidend für die Akzeptanz.
+
+\subsection{Fehlerrobustheit:}
+Auch hochmoderne Systeme sind nicht fehlerfrei. Nutzer müssen in die Lage versetzt werden, Transkriptionen bei Bedarf zu korrigieren, ohne dass dies den Gesamtprozess unpraktikabel macht.
+
+\subsection{Barrierefreiheit:}
+Zwar bietet die automatische Transkription Vorteile für Personen mit Hörbeeinträchtigungen, jedoch muss sichergestellt sein, dass die generierten Texte verständlich und kontextgerecht sind, damit sie tatsächlich als Hilfsmittel dienen können.
+
+\section{Zusammenfassung}
+\authormargin{Fabian Scherer}
+
+Die genannten Problemstellungen verdeutlichen, dass die Entwicklung eines KI-gestützten Spracherkennungssystems nicht allein eine technische Implementierungsaufgabe darstellt, sondern auch Fragen der Nutzerfreundlichkeit, Integration und Datensicherheit berücksichtigt werden müssen. Das Projekt muss daher technologische Leistungsfähigkeit mit praktischen Anforderungen und rechtlichen Rahmenbedingungen in Einklang bringen.

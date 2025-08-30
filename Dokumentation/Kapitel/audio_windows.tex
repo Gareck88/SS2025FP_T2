@@ -1,0 +1,74 @@
+%----------- File: Kapitel/audio_windows.tex -----------
+
+\chapter{Audioaufnahme unter Windows (WASAPI)}
+\label{chap:audio_windows}
+\authormargin{Mike Wild}
+
+
+Unter Windows wird die Audioaufnahme über die Windows Audio Session API (WASAPI) realisiert. Die Klasse \texttt{WinCaptureThread} kombiniert \emph{Loopback}-Capture für den Systemmix (Wiedergabe) und reguläres Capture für das Mikrofon (Aufnahme). Die Implementierung adressiert zwei zentrale Herausforderungen:
+(I) Synchronisation zweier unabhängiger Geräte mit potentiell unterschiedlicher Samplerate und
+(II) robuste Pufferung/Entkopplung durch ringförmige FIFOs und einen zeitbasierten Resampling-Ansatz.
+
+
+\section{Designziele und Grundidee}
+\label{sec:wasapi_ziele}
+\authormargin{Mike Wild}
+
+\begin{itemize}
+    \item \textbf{Gleichzeitiges Erfassen} von System- und Mikrofon-Stream via getrennte  \texttt{IAudioClient}/\texttt{IAudioCaptureClient}-Paare.
+    \item \textbf{Zeitbasierte Synchronisation}: statt paketgetriebener Taktung wird die exakte vergangene Zeit per \texttt{QueryPerformanceCounter} ermittelt; daraus wird die zu generierende Zielframezahl bei 48\,kHz abgeleitet.
+    \item \textbf{Sanftes Resampling}: FIFO-Puffer + kontinuierliche Lese-Positionen     (\texttt{m\_resampPosSys/Mic}) erlauben interpolationsfreies (nearest/linear) Sampling; hier: Sample-At-Position via Ringpuffer.
+    \item \textbf{Thread-Lebenszyklus} durch Basisklasse \texttt{CaptureThread} (Warten $\rightarrow$ Initialisieren $\rightarrow$ Loop $\rightarrow$ Cleanup).
+\end{itemize}
+
+
+\section{Initialisierung (\texttt{initializeCapture()})}
+\label{sec:wasapi_init}
+\authormargin{Mike Wild}
+
+\subsection*{Ablaufbeschreibung}
+\begin{enumerate}
+    \item \textbf{Geräte-Enumerator}: \texttt{MMDeviceEnumerator} erzeugen.
+    \item \textbf{Default-Geräte}: Wiedergabe (\texttt{eRender}, \texttt{eConsole})
+    für Loopback, Aufnahme (\texttt{eCapture}, \texttt{eConsole}) für Mikrofon.
+    \item \textbf{IAudioClient}: je Gerät aktivieren und \texttt{GetMixFormat()} abfragen
+    (native Samplerate/Kanalzahl).
+    \item \textbf{Initialize()}: Systemclient im Shared-Mode mit
+    \texttt{AUDCLNT\_STREAMFLAGS\_LOOPBACK}; Mikrofonclient im Shared-Mode.
+    \item \textbf{IAudioCaptureClient}: je Client abrufen; Puffergrößen vorbereiten.
+    \item \textbf{Start()}: beide Streams starten.
+\end{enumerate}
+
+
+
+\subsection*{Auszug (Listing)}
+\begin{lstlisting}[language=C++,caption={WASAPI-Setup (vereinfacht)},label={lst:wasapi_init}]
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+    IID_PPV_ARGS(&m_deviceEnumerator));
+    m_deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &m_deviceSys);
+    m_deviceSys->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+    reinterpret_cast<void**>(&m_audioClientSys));
+    WAVEFORMATEX* wfexSys = nullptr;
+    m_audioClientSys->GetMixFormat(&wfexSys);
+    m_audioClientSys->Initialize(AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_STREAMFLAGS_LOOPBACK,
+    10000000, 0, wfexSys, nullptr);
+    CoTaskMemFree(wfexSys);
+    m_audioClientSys->GetService(IID_PPV_ARGS(&m_captureClientSys));
+    // ... analog fuer Mic (ohne LOOPBACK-Flag)
+\end{lstlisting}
+
+
+\section{Zeitbasierte Synchronisation \& Resampling (\texttt{captureLoopIteration()})}
+\label{sec:wasapi_loop}
+\authormargin{Mike Wild}
+
+Die Besonderheit bei der Audioaufnahme unter Windows mittels \ac{WASAPI} ist, dass man diese nicht paketgetrieben \emph{zu takten} kann. Denn dann würden nur dann Daten aufgezeichnet werden, wenn auch tatsächlich Audiodaten zur Verfügung stehen, d.h. es wird keine Stille aufgezeichnet. Dies führt neben der falschen Aufnahme-Dauer auch noch zu dem Problem, dass die Audiosignale vom System und vom Mikrofon nicht mehr synchron währen. Deswegen muss, mithilfe eines sehr genauen Timers, die vergangene Zeit seit dem letzten Verarbeiten von Audiosignalen gemessen werden, und die Audiodaten um die Stille ergänzt werden. Somit wird die in der aktuellen Iteration vergangene Zeit $\Delta t$ per \texttt{QueryPerformanceCounter} bestimmt. Daraus ergeben sich die zu erzeugenden Ziel-Frames bei 48\,kHz:
+\[
+N_\text{target} := \lfloor 48000 \cdot \Delta t + \text{Akkumulator} \rfloor.
+\]
+Für jedes Zielsample werden die momentanen Werte aus den FIFO-Puffern mit
+Positionszeigern \texttt{m\_resampPosSys/Mic} gelesen. Dieses Schema erzeugt
+bei ausbleibenden Paketen faktisch Stille, hält aber die Streams zueinander synchron.
+
+

@@ -1,0 +1,67 @@
+%*******************************************************
+% Titlepage
+%*******************************************************
+%%%
+%%% title page (german)
+%%%
+\thispagestyle{empty}
+\pdfbookmark[0]{Titelblatt}{title}
+\begin{titlepage}
+
+  % If printed on two sides, center the title page
+  \condTWOSIDE{\changetext{}{19mm}{}{19mm}{}}
+
+  \vspace{1cm}
+  \begin{center}
+    %\includegraphics[width=7.7cm]{gfx/fernuni_hagen_logo.png} \\ 
+    \includegraphics[width=2.7cm]{Bilder/fernuni_hagen_logo.pdf} \\
+  \end{center}
+
+  \begin{center}
+    \vspace{0.1cm}
+    \huge \textbf{\myUni}\\
+    \vspace{0.4cm}
+    \LARGE --~\myFaculty~--\\
+    \vspace{0.2cm}
+    \large~\mySubjectArea~
+  \end{center}
+
+  \vfill
+  \vfill
+
+  \begin{center}
+    \LARGE \textbf{\myTitle}
+  \end{center} 
+
+  \vfill
+  \vfill
+
+  \begin{center}
+    \Large \myModul
+  \end{center}
+
+  \vfill
+
+  \begin{center}
+    \Large vorgelegt von\\
+    \vspace{0.3cm}
+    \Large \textbf{Fabian Michael Scherer}\\
+    \Large \textbf{Yolanda Hadiana Fiska}\\
+    \Large \textbf{Pakize Gökkaya}\\
+    \Large \textbf{Mike Wild}
+  \end{center}
+
+  \vfill
+  \vfill
+
+  \begin{center}
+    \begin{tabular}{lll}
+%      \referent    & : & \myProf \\
+      \supervisor & : & \mySupervisor
+    \end{tabular}
+  \end{center} 
+
+  % If printed on two sides, center the title page
+  \condTWOSIDE{\changetext{}{-19mm}{}{-19mm}{}}
+
+\end{titlepage}

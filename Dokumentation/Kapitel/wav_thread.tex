@@ -1,0 +1,87 @@
+%----------- File: Kapitel/wav_thread.tex -----------
+
+\chapter{WAV-Schreibthread (Pufferung, Downsampling und Dateiformat)}
+\label{chap:wav_thread}
+\authormargin{Mike Wild}
+
+
+
+Der \texttt{WavWriterThread} entkoppelt die zeitkritische Audioaufnahme von der persistenten Speicherung. Er implementiert ein \emph{Producer–Consumer}-Muster: Capture-Threads liefern asynchron \texttt{QList<float>}-Blöcke (Stereo, 48\,kHz, Float32), der Writer-Thread puffert diese, schreibt periodisch in zwei WAV-Dateien und signalisiert den Abschluss der Session.
+
+
+\section{Ziele und Randbedingungen}
+\authormargin{Mike Wild}
+
+\begin{itemize}
+    \item \textbf{Zwei parallele Ausgaben:}
+    (I) \emph{HQ-Datei} in 48\,kHz, Stereo, 32-bit Float (für Archivierung/Weiterverarbeitung) und (II) \emph{ASR-Datei} in 16\,kHz, Mono, 16-Bit-Integer (für Spracherkennung) speichern.
+
+    \item \textbf{Latenz/IO-Last balancieren:} Das Schreiben erfolgt blockweise, gesteuert über einen konfigurierbaren \emph{Flush-Threshold} in Byte (Default via \texttt{QSettings}).
+
+    \item \textbf{Robuste Finalisierung:} WAV-Header werden erst am Ende korrekt gefüllt, nachdem die exakte Datenlänge bekannt ist; während der Aufnahme stehen Platzhalter im Datei-Header.
+\end{itemize}
+
+
+\section{Lebenszyklus und Synchronisation}
+\authormargin{Mike Wild}
+
+Die externe API umfasst:
+\begin{itemize}
+    \item \texttt{startWriting(hqPath, asrPath)}: Dateien öffnen, Headerplatzhalter schreiben, Thread aktivieren.
+
+    \item \texttt{writeChunk(QList<float>)}: Producer-Slot; fügt Audio-Daten-Blöcke threadsicher in den Puffer ein.
+
+    \item \texttt{stopWriting()}: beendet die Session; restliche Daten werden geschrieben, Header finalisiert.
+
+    \item \texttt{shutdown()}: beendet den Thread (inkl.\ \texttt{wait()}) sicher.
+\end{itemize}
+
+
+\section{Downsampling und Formatkonvertierung}
+\label{sec:wav_downsampling}
+\authormargin{Mike Wild}
+
+Die HQ-Datei erhält den Float32-Stereostream unverändert. Für die ASR-Datei wird der Stream \emph{downmixed} und \emph{downsampled}:
+\begin{enumerate}
+    \item \textbf{Stereo $\rightarrow$ Mono:} Mittelwertbildung pro Frame \(\;m = \tfrac{1}{2}(L + R)\).
+
+    \item \textbf{48\,kHz $\rightarrow$ 16\,kHz:} Faktorielles Downsampling mit Faktor \(3\): pro drei Eingangssamples wird genau ein Ausgangssample erzeugt. Ein \emph{Offset}-Akkumulator gewährleistet, dass Chunk-Grenzen korrekt fortgeführt werden:
+    \[
+    \texttt{m\_downsampleOffset} \leftarrow (N_\text{frames} + \texttt{m\_downsampleOffset}) \bmod 3.
+    \]
+
+    \item \textbf{Float32 $\rightarrow$ Int16:} Skalierung \([-1,1]_{\text{Float}_{32}} \mapsto [-32768,32767]_{\text{16-Bit-Integer}}\)
+\end{enumerate}
+
+
+
+\section{WAV-Header-Strategie}
+\label{sec:wav_headers}
+\authormargin{Mike Wild}
+
+Beim Start werden 44 Null-Bytes als Header-Platzhalter geschrieben. Nach Abschluss der Session werden die korrekten Header an Datei-Offset \(0\) (Dateianfang) nachgetragen:
+
+\begin{itemize}
+    \item HQ: \texttt{AudioFormat=3} (IEEE Float), Stereo, 48\,kHz, 32\,bit.
+
+    \item ASR: \texttt{AudioFormat=1} (PCM), Mono, 16\,kHz, 16\,bit.
+\end{itemize}
+
+Die Felder \texttt{RIFF}–\texttt{ChunkSize} und \texttt{data}–\texttt{Subchunk2Size} ergeben sich aus den gezählten Nutzdatenbytes (\texttt{m\_hqBytesWritten}, \texttt{m\_asrBytesWritten}).
+
+
+\section{Konfigurierbarkeit und Robustheit}
+\label{sec:wav_config}
+\authormargin{Mike Wild}
+
+\textbf{Flush-Threshold.} Die Mindestpuffergröße, die erreicht werden muss, bevor ein Dateischreibvorgang erfolgt, ist über \texttt{QSettings} konfigurierbar (im \emph{SettingsWizard}); so lässt sich das Verhältnis von Latenz zu Schreib-Zugriff-Last steuern.\\
+
+\textbf{Atomare Zustände.} Flags \texttt{m\_active} und \texttt{m\_shutdown} werden atomar verwaltet; \texttt{QWaitCondition}–Signale trennen \emph{Start-/Stop-}von \emph{Datenwarte}-Phasen. Die Finalisierung schreibt verbleibende Pufferdaten sicher und füllt erst dann die Header.
+
+
+
+\section{Zum Format}
+\label{sec:wav-format}
+\authormargin{Mike Wild}
+
+Die Entscheidung für Float32 als \emph{Transportformat} bis zum Writer minimiert Rundungsfehler in der Mischphase und vermeidet Clipping-Artefakte vor der finalen Quantisierung. Die einfache 3:1-Reduktion ist für ASR robust und rechenarm; für höhere Qualität könnte optional ein Polyphasen- oder Windowed-Sinc-Resampler integriert werden. Die getrennten Dateien erfüllen zwei Zwecke: \emph{Nutzung} für die ASR (ASR-Datei) und \emph{Archivierung/Analyse} des Meetings und nachträgliche Korrektur des Transkripts (HQ-Datei).

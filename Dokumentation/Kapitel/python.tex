@@ -1,0 +1,145 @@
+%----------- File: Kapitel/python.tex -----------
+
+\chapter{Python-Integration (Environment \& ASR-Prozess)}
+\label{chap:python}
+\authormargin{Mike Wild}
+
+
+Die Anwendung integriert einen externen Python-Workflow für die automatische Spracherkennung (ASR) und einen für die Tag-Erstellung mittels \texttt{spaCy}. Drei Komponenten kapseln diese Integration:
+
+\begin{itemize}
+    \item \textbf{PythonEnvironmentManager:} Überprüfung/Installation einer isolierten Python-Umgebung (virtuelle Umgebung), inkl.\ (Neu-)Installation benötigter Pakete und Nutzerführung via Dialog.
+
+    \item \textbf{AsrProcessManager:} Startet und überwacht den Python-Prozess (QProcess), liest fortlaufend die Ergebnis-Ausgaben und speist diese als \texttt{MetaText}-Segmente in das Datenmodell \texttt{Transcription} ein.
+
+    \item \textbf{TagGeneratorManager:} Startet und überwacht den Python-Prozess (QProcess), übergibt den Inhalt des Transkripts, nimmt die Tags entgegen und informiert den Nutzer über eine \texttt{QMessageBox}.
+\end{itemize}
+
+
+\section{Ziele und Abgrenzung}
+\label{sec:py_goals}
+\authormargin{Mike Wild}
+
+\begin{itemize}
+    \item \textbf{Reproduzierbarkeit:} konsistente Python-Version und Paketstände unabhängig vom System.
+
+    \item \textbf{Robuste Prozesssteuerung:} klares Start/Stop, Fehlerpfade (Exitcodes, Fehlermeldungen), thread-sichere Weitergabe der Ergebnisse an die GUI.
+
+    \item \textbf{Entkopplung:} C++/Qt und Python sind sauber getrennt; Kommunikation nur über Prozessgrenzen.
+\end{itemize}
+
+
+\section{PythonEnvironmentManager}
+\label{sec:py_env}
+\authormargin{Mike Wild}
+
+Der \texttt{PythonEnvironmentManager} kapselt die Lebenszyklus-Operationen der Python-Umgebung: Existenzprüfung, Neuinstallation, Paketinstallation und die Nutzerinteraktion über einen Installationsdialog. Pfade und Zustände werden in den globalen Einstellungen verwaltet (\texttt{QSettings}), sodass einerseits andere Komponenten (z.\,B.\ \texttt{AsrProcessManager}) die Interpreter-/Skriptpfade aus den Settings laden können und andererseits die Skripte zur Laufzeit vom Nutzer ausgetauscht werden können.
+
+
+\subsection*{Aufgabenüberblick}
+
+\begin{itemize}
+    \item Prüfen, ob eine virtuelle Umgebung vorhanden und funktionsfähig ist (Interpreter aufrufbar, Pip/Pakete verfügbar).
+
+    \item Optionales \textit{Reinstall}: bestehende Umgebung rekursiv löschen und neu anlegen.
+
+    \item Installation der benötigten Pakete (z.\,B.\ via \texttt{pip install -r requirements.txt}).
+
+    \item Rückmeldung des Ergebnisses (Erfolg/Fehlertext) an den aufrufenden Kontext.
+\end{itemize}
+
+
+
+\section{AsrProcessManager}
+\label{sec:py_asr}
+\authormargin{Mike Wild}
+
+Der \texttt{AsrProcessManager} steuert den externen Python-Prozess zur Transkription (ASR). Er übernimmt die Pfadauflösung (\texttt{loadPaths()}), den Start der Transkription für eine gegebene WAV-Datei und das Parsen der Ergebnisausgaben.\\
+
+
+\subsection*{Signale und zentrale Methoden}
+\authormargin{Mike Wild}
+
+\textbf{\texttt{startTranscription(wavPath)}}
+Startet den QProcess (Python + ASR-Skript) für die angegebene WAV-Datei.\\
+
+\textbf{\texttt{stop()}}
+Beendet den laufenden Prozess (sanft/sofort, je nach Zustand).\\
+
+\textbf{\texttt{parseLine(line)}}
+Parst eine Textzeile aus der Prozessausgabe in einen \texttt{MetaText}.\\
+
+\textbf{\texttt{loadPaths()}}
+Lädt Interpreter-/Skriptpfade aus \texttt{QSettings}.\\
+
+\textbf{\texttt{segmentReady(meta)}}
+Signal -- Wird für jedes erkannte Segment emittiert; \texttt{meta} ist ein \texttt{MetaText}.\\
+
+\textbf{\texttt{finished(success, err)}}
+Signal -- Markiert Prozessende (Exitcode=$0$ $\Rightarrow$ \texttt{success=true}); bei Fehlern transportiert \texttt{err} die Ursache.
+
+
+\subsection*{Prozessfluss und Interprozesskommunikation}
+\authormargin{Mike Wild}
+
+Das ASR-Python-Skript wird als externer Prozess ausgeführt (\texttt{QProcess}). Die Ergebnisse werden \emph{zeilenweise} über die Standardausgabe geliefert; jede Zeile repräsentiert ein erkennbares Segment und wird mittels \texttt{parseLine()} in das interne \texttt{MetaText}-Format überführt. Während der Laufzeit emittiert der Manager \texttt{segmentReady(meta)}, sodass das Modell \texttt{Transcription} inkrementell wachsen kann. Bei Prozessende wird \texttt{finished(success, errorMsg)} gesendet.
+
+
+\section{Fehlerbehandlung}
+\label{sec:py_errors}
+\authormargin{Mike Wild}
+
+\textbf{Exitcodes und Fehlermeldungen} Der \texttt{AsrProcessManager} unterscheidet zwischen regulärem Abschluss (Exitcode~$0$) und Fehlerfällen. Bei Fehlern wird der in Stderr gesammelte Text als \texttt{errorMsg} via \texttt{finished(false, errorMsg)} weitergereicht.\\
+
+\textbf{Abbruch} \texttt{stop()} beendet einen laufenden Prozess kontrolliert. Auf GUI-Seite ist \texttt{onStartClicked()} defensiv: ein ggf.\ vorher laufender ASR-Prozess wird zu Beginn gestoppt, um Kollisionen zu vermeiden.\\
+
+\textbf{Parsing-Fehler} \texttt{parseLine()} kapselt die Übersetzung einer Prozesszeile in \texttt{MetaText}. Fehlerhafte Zeilen werden verworfen oder als diagnostischer Hinweis protokolliert, ohne den Gesamtprozess zu unterbrechen.
+
+
+\section{TagGeneratorManager}
+\label{sec:py_tags}
+\authormargin{Mike Wild}
+
+Der \texttt{TagGeneratorManager} kapselt die Python-basierte Schlagwortanalyse (z.\,B.\ mittels \texttt{spaCy}). Er startet einen externen Prozess, übergibt den Transkripttext und erhält eine Liste von Tags zurück. Die Ergebnisse werden als Signal an die GUI/Modellschicht weitergereicht (vgl.\ \texttt{MainWindow::onGenerateTags()} und die Signalverknüpfung in \texttt{doConnects()}).
+
+\subsection*{Signale und zentrale Methoden}
+
+\textbf{\texttt{generateTagsFor(text)}}
+Startet den QProcess (Python + Tagging-Skript) und übergibt den vollständigen Transkripttext.\\
+
+\textbf{\texttt{stop()}}
+Beendet einen laufenden Tagging-Prozess kontrolliert (z.\,B.\ vor einem neuen Run).\\
+
+\textbf{\texttt{loadPaths()}}
+Lädt Interpreter-/Skriptpfade aus \texttt{QSettings} (z.\,B.\ \texttt{pythonPath}, \texttt{tagScriptPath}).\\
+
+\textbf{\texttt{parseOutput(data)}}
+Übersetzt die Prozessausgabe (z.\,B.\ JSON- oder zeilenweise Liste) in eine \texttt{QStringList}.\\
+
+\textbf{\texttt{tagsReady(tags, success, err)}}
+Signal — Liefert die extrahierten Tags sowie Erfolg/Fehlertext zurück.
+
+\subsection*{Prozessfluss und Interprozesskommunikation}
+\authormargin{Mike Wild}
+
+Die Tag-Generierung folgt einem einfachen Request--Response-Muster: Die C++-Seite übergibt den kompletten Transkripttext, die Python-Seite liefert eine normalisierte Liste von Schlagwörtern zurück. Typische Normalisierungsschritte (auf der Python-Seite) umfassen Kleinschreibung, Trimmen, Duplikatentfernung und ggf.\ Lemmatisierung; das konkrete Verfahren ist vom verwendeten Skript abhängig.
+
+
+\subsection*{Integration in die GUI und das Datenmodell}
+\authormargin{Mike Wild}
+
+Die GUI löst die Analyse über den entsprechenden Button aus:
+\begin{itemize}
+    \item \textbf{Aufruf}: \texttt{onGenerateTags()} prüft, ob Text vorhanden ist, deaktiviert den Button, zeigt Status an und ruft \texttt{generateTagsFor(m\_script->text())} auf.
+    \item \textbf{Ergebnis}: Auf \texttt{tagsReady(tags, success, err)} setzt die GUI bei Erfolg die Tags in \texttt{Transcription} (\texttt{m\_script->setTags(tags)}) und zeigt die Liste an; bei Fehlern wird eine Warnung angezeigt. Der Button wird wieder aktiviert.
+\end{itemize}
+
+\subsection*{Fehler- und Qualitätsaspekte}
+\authormargin{Mike Wild}
+
+\begin{itemize}
+    \item \textbf{Timeout/Abbruch:} Lange Analysen (sehr große Transkripte) sollten durch einen Prozess-Timeout bzw.\ \texttt{stop()} abfangbar sein.
+    \item \textbf{Speicherbedarf:} Für sehr große Texte empfiehlt sich eine Übergabe per temporärer Datei statt \texttt{stdin}, um Kopier-Overhead zu reduzieren.
+    \item \textbf{Normalisierung:} Deduplizieren, Kleinschreibung und Längenfilter (z.\,B.\ \(\geq\) 2 Zeichen) erhöhen die Qualität der Tag-Liste; diese Schritte sollten im Python-Skript konsistent implementiert sein.
+    \item \textbf{Determinismus:} Für reproduzierbare Ergebnisse sollten nicht-deterministische Komponenten (z.\,B.\ zufällige Scores) vermieden oder mit fixem Seed betrieben werden.
+\end{itemize}

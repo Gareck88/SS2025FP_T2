@@ -1,0 +1,48 @@
+%----------- File: Kapitel/implementierung.tex -----------
+
+\chapter{Implementierung der Schlüsselkomponenten}
+\label{chap:implementierung}
+\authormargin{Mike Wild}
+
+Aufbauend auf dem in Kapitel \ref{chap:architektur} vorgestellten Konzept, erläutert dieses Kapitel die konkrete technische Umsetzung der zentralen Komponenten der Applikation. Der Schwerpunkt liegt auf der Realisierung der plattformübergreifenden Audio-Aufnahme, der Synchronisation, der Audio-Streams und der Anbindung der externen KI-Module.
+
+
+\section{Die plattformübergreifende Audio-Aufnahme}
+\label{sec:audio_aufnahme}
+\authormargin{Mike Wild}
+
+Die größte Herausforderung bei der Audio-Aufnahme war die Inkompatibilität der nativen Audio-Schnittstellen der Zielplattformen MacOS, Windows (WASAPI) und Linux (PulseAudio). Um eine wartbare und erweiterbare Lösung zu schaffen, wurde eine Abstraktionsschicht implementiert, die auf zwei etablierten Software-Entwurfsmustern basiert.
+
+\subsection{Abstraktion durch Design Patterns}
+\authormargin{Mike Wild}
+
+Die Entkopplung der plattformspezifischen Logik von der Hauptanwendung wurde durch die kombinierte Anwendung des \textit{Abstract Factory}- und des \textit{Template Method}-Patterns erreicht.
+
+\begin{itemize}
+    \item \textbf{Template Method Pattern:} Die abstrakte Basisklasse \texttt{CaptureThread} definiert das Grundgerüst des Aufnahme-Algorithmus in ihrer \texttt{run()}-Methode. Dieser Ablauf -- Initialisieren, Aufnahmeschleife, Aufräumen -- ist für alle Plattformen identisch. Die konkreten, plattformabhängigen Implementierungsschritte werden als rein virtuelle Methoden (\texttt{initializeCapture()}, \texttt{captureLoopIteration()}, \texttt{cleanupCapture()}) deklariert, die von den abgeleiteten Klassen überschrieben werden müssen.
+    \item \textbf{Abstract Factory Pattern:} Die \texttt{AudioFactory} dient als zentrale Erzeugungsinstanz. Ihre statische Methode \texttt{createThread()} wählt zur Kompilierzeit mittels Präprozessor-Direktiven (\texttt{\#if defined(Q\_OS\_WIN)}) die korrekte, konkrete \texttt{CaptureThread}-Implementierung aus und instanziiert diese. Dadurch bleibt der restliche Code, insbesondere die \texttt{MainWindow}, vollständig agnostisch gegenüber dem zugrundeliegenden Betriebssystem.
+\end{itemize}
+
+Wie die Aufnahme der Audiosignale konkret implementiert ist, kann man in den nachfolgenden Kapiteln sehen. Die Audioaufnahme unter Windows in Kapitel \ref{chap:audio_windows} ab Seite \pageref{chap:audio_windows}, für Linux (nur PulseAudio) in Kapitel \ref{chap:audio_linux} ab Seite \pageref{chap:audio_linux} und für MacOS in Kapitel \ref{chap:audio_mac} ab Seite \pageref{chap:audio_mac}.
+
+
+
+\section{Anbindung der KI-Module}
+\label{sec:ki_anbindung}
+\authormargin{Mike Wild}
+
+Die Ausführung der rechenintensiven Python-Skripte für die Transkription und Tag-Erstellung ist in den Manager-Klassen \texttt{AsrProcessManager} und \texttt{TagGeneratorManager} gekapselt. Beide folgen demselben Entwurfsmuster, um die asynchrone und sichere Kommunikation zwischen C++ und Python zu gewährleisten.
+
+Der Manager startet das jeweilige Python-Skript als externen Prozess mittels \texttt{QProcess}. Die Datenübergabe von C++ nach Python erfolgt über die Standard-Eingabe (stdin) des Prozesses. Dies ist besonders für die Tag-Generierung vorteilhaft, da so beliebig lange Texte ohne Beschränkungen durch Kommandozeilenargumente übergeben werden können. Nach dem Schreiben der Daten wird der Schreibkanal mit \texttt{closeWriteChannel()} geschlossen, was dem Python-Skript das Dateiende (EOF) signalisiert und dessen Verarbeitung anstößt.
+
+Die Ergebnisse werden vom Python-Skript zeilenweise auf die Standard-Ausgabe (stdout) geschrieben. Der C++-Manager liest diese Ausgabe, parst sie und kommuniziert die fertigen Ergebnisse (z.B. ein \texttt{MetaText}-Segment oder eine Liste von Tags) über Qt-Signale an die \texttt{MainWindow}. Dieser ereignisbasierte Ansatz stellt sicher, dass die GUI auch während der Analyse durch die Python-Skripte nicht blockiert wird.
+
+
+\section{Nachgelagerte Transkription}
+\label{sec:whisper}
+\authormargin{Mike Wild}
+
+Die Aufgabenstellung hat eine Transkription in Echtzeit gefordert, dennoch ist in der Applikation auch noch eine nachgelagerte Transkription mit eingebaut. Dies hat zweierlei Gründe. Zum einen würde Übergangsweise eine Lösung benötigt bis das eigentliche KI-Modell fertig war, um die Applikation vollständig zu Testen und die anderen Features entwickeln zu können. Und zum anderen ist das eine gute Möglichkeit die Ergebnisse der Echtzeittranskription zu vergleichen und zu evaluieren. Das hier eingesetzte Python-Skript (\texttt{run\_asr.py}) verwendet \texttt{pyannote} für die Sprecherdiarisierung und \texttt{whisper} für die Transkription. Dies lässt sich aber leicht ändern, sodass beispielsweise die Transkription über \texttt{google} erfolgen kann. Da die nachgelagerte Transkription nicht Teil der Aufgabenstellung ist, wird hier auch nicht näher darauf eingegangen. Somit beschäftigt sich Kapitel \ref{chap:ki} mit der echtzeitfähigen Transkription.
+
+\section*{Hinweis}
+Aufgrund des Zeitmangels sind die Komponenten: \glqq Audioaufnahme unter MacOS\grqq\ und \glqq Echtzeittranskription\grqq\ noch nicht vollständig in der endgültigen Version der Applikation (main-Branch) enthalten. Diese sind jedoch einzeln in einer eigenen Version integriert (siehe Paki-Branch, bzw. Fabian-Branch).

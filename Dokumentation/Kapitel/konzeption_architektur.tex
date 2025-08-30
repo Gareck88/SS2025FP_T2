@@ -1,0 +1,69 @@
+%----------- File: Kapitel/konzeption_architektur.tex -----------
+
+\chapter{Konzeption \& Architektur der Anwendung}
+\label{chap:architektur}
+\authormargin{Mike Wild}
+
+Dieses Kapitel beschreibt die fachliche Konzeption und die Softwarearchitektur der Anwendung. Ziel ist eine plattformübergreifende, echtzeitfähige Erfassung von System- und Mikrofon-Audio, deren automatische Transkription und Weiterverarbeitung und Verwaltung des Textes.Der Fokus dieses Kapitels liegt auf den architektonischen Entscheidungen, die getroffen wurden, um die zentralen Herausforderungen zu bewältigen. Es werden die Schlüsselkomponenten vorgestellt und die zugrundeliegenden Design Patterns erläutert.
+
+
+\section{Architektonischer Überblick und Design-Prinzipien}
+\authormargin{Mike Wild}
+
+Die Software-Architektur der Applikation basiert auf den \textbf{\ac{SOLID}}-Prinzipien der objektorientierten Programmierung.
+
+\grqq Das \textbf{Single-Responsibility-Prinzip} besagt, dass jede Klasse nur eine einzige Verantwortung haben solle. Verantwortung wird hierbei als „Grund zur Änderung“ definiert. […] Das \textbf{Open-Closed-Prinzip} besagt, dass Software-Einheiten (hier Module, Klassen, Methoden usw.) Erweiterungen möglich machen sollen (dafür offen sein), aber ohne dabei ihr Verhalten zu ändern (ihr Sourcecode und ihre Schnittstelle sollte sich nicht ändern). […] Das \textbf{\ac{LSP}} oder Ersetzbarkeitsprinzip fordert, dass eine Instanz einer abgeleiteten Klasse sich so verhalten muss, dass jemand, der meint, ein Objekt der Basisklasse vor sich zu haben, nicht durch unerwartetes Verhalten überrascht wird, wenn es sich dabei tatsächlich um ein Objekt eines Subtyps handelt. […] Das \textbf{Interface-Segregation-Prinzip} dient dazu, zu große Interfaces aufzuteilen. Die Aufteilung soll gemäß den Anforderungen der Clients an die Interfaces gemacht werden – und zwar derart, dass die neuen Interfaces genau auf die Anforderungen der einzelnen Clients passen. Die Clients müssen also nur mit Interfaces agieren, die das und nur das können, was die Clients benötigen. […] Das \textbf{Dependency-Inversion-Prinzip} beschäftigt sich mit der Reduktion der Kopplung von Modulen. Es besagt, dass Abhängigkeiten immer von konkreteren Modulen niedriger Ebenen zu abstrakten Modulen höherer Ebenen gerichtet sein sollten.  \grqq\ \cite{wiki:solid}
+
+
+Von der Architektur her wird auf die Trennung von Verantwortlichkeiten geachtet. So ist die Benutzeroberfläche (\texttt{MainWindow}) von der Backend-Logik entkoppelt. Aufwendige Operationen, wie die Audio-Aufnhame, das Schreiben von Dateien und die Kommunikation mit externen Python-Prozessen werden in separate Hintergrund-Threads und spezialisierte Manager-Klassen ausgelagert. Dieser Ansatz stellt sicher, dass die \ac{GUI} jederzeit reaktionsfähig bleibt.
+
+
+
+\section{Hauptkomponenten}
+\authormargin{Mike Wild}
+
+Hier wird ein kurzer Überblick über die wichtigsten Komponenten der Anwendung gezeigt. Diese sind:
+
+\begin{itemize}
+    \item \textbf{\texttt{MainWindow}}: Agiert als zentrale \textbf{Controller}-Instanz. Sie initialisiert alle Sub-Systeme, stellt die GUI dar und reagiert auf Benutzerinteraktionen, indem sie Aufgaben an die zuständigen Manager-Klassen delegiert.
+    \item \textbf{Manager-Klassen (\texttt{FileManager}, \texttt{AsrProcessManager}, etc.)}: Kapseln spezifische Logikbereiche. Sie steuern externe Prozesse und abstrahieren den Dateizugriff.
+    \item \textbf{\texttt{Transcription}}: Dient als zentrales \textbf{Datenmodell (Model)}, das alle Informationen zu einem Meeting enthält und als alleinige Quelle der Wahrheit (\glqq Single Source of Truth\grqq) fungiert.
+    \item \textbf{\texttt{AudioFactory}}: Erzeugt plattformabhängig das richtige Audio-Aufnahme-Objekt und gibt es als \texttt{CaptureThread} zurück.
+    \item \textbf{\texttt{CaptureThread}}: Ist eine abstrakte Basisklasse, die die plattformabhängigen Audio-Aufnahmen kapselt und gleichzeitig mittels \texttt{QWaitCondition} dafür sorgt, dass Ressourcen gespart werden, indem der Thread nur dann arbeitet, wenn auch Daten vorhanden sind und ansonsten schläft.
+    \item \textbf{Audio-Threads (\texttt{CaptureThread}, \texttt{WavWriterThread})}: Implementieren das \textbf{Producer-Consumer-Pattern}. Der \texttt{CaptureThread} produziert Audiodaten, während der \texttt{WavWriterThread} diese konsumiert und auf die Festplatte schreibt.
+\end{itemize}
+
+
+\section{Threading- und Synchronisationskonzept}
+\label{sec:threading}
+\authormargin{Mike Wild}
+
+Die Audioaufnahme und das Dateischreiben laufen in eigenen Threads. Der GUI-Thread bearbeitet ausschließlich Benutzerinteraktionen und reagiert über Signale/Slots:
+
+\begin{itemize}
+    \item \textbf{CaptureThread} (Audio): nicht-blockierendes Einlesen; Datenübergabe via \texttt{emit pcmChunkReady(...)} an den \texttt{WavWriterThread} mit \texttt{Qt::QueuedConnection}.
+    \item \textbf{WavWriterThread}: wartet auf Daten, schreibt blockweise, finalisiert Header.
+    \item \textbf{GUI-Thread}: steuert mit Start/Stop; aktualisiert Anzeigen (Zeitlabel / Status); lässt bei \texttt{Audio speichern} die HQ-Wav-Datei via \texttt{QtConcurrent::run} kopieren; verwaltet externe Prozesse via \texttt{QProcess}.
+\end{itemize}
+
+Das Beenden wird explizit orchestriert: \texttt{stopCapture()} beendet den inneren Loop, das \texttt{stopped}-Signal initiiert \texttt{stopWriting()}, anschließend löst \texttt{finishedWriting} den \ac{ASR}-Anstoß aus. \texttt{shutdown()}-Methoden stellen einen sauberen Thread-Stopp mit \texttt{wait()} sicher.
+
+
+\section{Fehlerbehandlung und Cleanup}
+\label{sec:cleanup}
+\authormargin{Mike Wild}
+
+Fehler im Initialisieren von Audio-Backends führen zu einem definierten Abbruch mit Aufräumen (\texttt{PulseAudio}-Module entladen; \texttt{WASAPI}-Interfaces \emph{safe release}). Beim Beenden der Anwendung werden Aufnahme- und Writer-Thread via \texttt{shutdown()} synchron gestoppt. Der \texttt{AsrProcessManager} signalisiert Erfolgs-/Fehlerzustände an die \ac{GUI}; Fehlermeldungen aus \emph{stderr} werden an die Nutzer weitergereicht.
+
+\section{Konfigurierbarkeit}
+\label{sec:config}
+\authormargin{Mike Wild}
+
+Zentrale Parameter werden über \texttt{QSettings} verwaltet: Lautstärkegewichte (\texttt{sysGain}, \texttt{micGain}), Puffergröße, Größe und Position des Fensters, Pfade der Python-Umgebung und \ac{ASR}-Skripte. Damit sind Build- und Laufzeitbelange getrennt und reproduzierbar dokumentiert.
+
+
+
+\section{Zusammenfassung}
+\authormargin{Mike Wild}
+Die Architektur separiert Aufgaben konsequent: Audioaufnahme (plattformnah) in
+spezialisierten Threads, persistentes Schreiben als eigenständige Stufe, \ac{ASR} als externer Prozess sowie eine \ac{GUI}, die lediglich orchestriert. Die lose Kopplung über Signale/Slots und Prozesse schafft Robustheit, Testbarkeit und Erweiterbarkeit.
